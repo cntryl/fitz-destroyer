@@ -1,0 +1,19 @@
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+artifacts/
+*.tsbuildinfo
+*.log
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo

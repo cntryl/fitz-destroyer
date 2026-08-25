@@ -1,0 +1,67 @@
+# Local-only Fitz recovery harness. The host runner owns lifecycle and cleanup.
+services:
+  sqrzl:
+    image: "${SQRZL_IMAGE:-ghcr.io/sqrzl/sqrzl-emulator:latest}"
+    restart: "no"
+    environment:
+      SQRZL_BLOBS_PATH: /app/blobs
+      SQRZL_ACCESS_KEY_ID: admin
+      SQRZL_SECRET_ACCESS_KEY: sqrzl-secret
+      SQRZL_BUCKET_LIST: fitz-destroyer
+    volumes:
+      - sqrzl-blobs:/app/blobs
+
+  fitz:
+    image: "${FITZ_IMAGE:-fitz-destroyer-local}"
+    build:
+      context: "${FITZ_SOURCE_DIR:-../fitz}"
+      dockerfile: Dockerfile
+    restart: "no"
+    stop_grace_period: 15s
+    healthcheck:
+      disable: true
+    depends_on:
+      - sqrzl
+    ports:
+      - "127.0.0.1:${FITZ_HOST_HTTP_PORT:-4390}:4090"
+    environment:
+      FITZ_AUTH_REQUIRED: "false"
+      FITZ_ADMIN_AUTH_MODE: open
+      FITZ_HTTP_PORT: "4090"
+      FITZ_DRAIN_GRACE_SECONDS: "1"
+      FITZ_STORAGE_MODE: cloud
+      FITZ_STORAGE_PROVIDER: sqrzl-s3
+      FITZ_STORAGE_ENDPOINT: http://sqrzl:9000
+      FITZ_STORAGE_BUCKET: fitz-destroyer
+      FITZ_STORAGE_PREFIX: "${FITZ_STORAGE_PREFIX:-destroyer}"
+      FITZ_STORAGE_CACHE_PATH: /data/fitz-cloud-cache
+      FITZ_STORAGE_CLOUD_DURABILITY: strict
+      FITZ_QUEUE_WRITE_POLICY: strict
+      FITZ_LOG_FORMAT: json
+      FITZ_LOG_LEVEL: info
+      OTEL_ENABLED: "false"
+    volumes:
+      - fitz-cache:/data
+
+  client:
+    image: "${DESTROYER_CLIENT_IMAGE:-fitz-destroyer-client-local}"
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    profiles:
+      - clients
+    restart: "no"
+    depends_on:
+      - fitz
+    environment:
+      FITZ_URL: ws://fitz:4090/ws
+      DESTROYER_MODE: bombard
+      DESTROYER_NAMESPACE: "${DESTROYER_NAMESPACE:-destroyer}"
+      DESTROYER_SEED: "${DESTROYER_SEED:-424242}"
+      DESTROYER_DOMAINS: "${DESTROYER_DOMAINS:-}"
+      DESTROYER_REQUEST_TIMEOUT_MS: "${DESTROYER_REQUEST_TIMEOUT_MS:-10000}"
+      DESTROYER_PROGRESS_INTERVAL_MS: "${DESTROYER_PROGRESS_INTERVAL_MS:-1000}"
+
+volumes:
+  sqrzl-blobs:
+  fitz-cache:
