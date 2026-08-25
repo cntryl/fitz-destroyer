@@ -100,11 +100,14 @@ export class ComposeStack {
     this.#artifacts = artifacts;
     this.#composeFile = join(
       config.rootDir,
-      config.fitzImage === undefined ? "compose.yml" : "compose.destroyer.yml",
+      config.destroyerImage === undefined ? "compose.yml" : "compose.destroyer.yml",
     );
     this.#env = {
       FITZ_SOURCE_DIR: config.fitzSourceDir,
       ...(config.fitzImage === undefined ? {} : { FITZ_IMAGE: config.fitzImage }),
+      ...(config.destroyerImage === undefined
+        ? {}
+        : { DESTROYER_IMAGE: config.destroyerImage }),
       FITZ_HOST_HTTP_PORT: String(config.port),
       FITZ_STORAGE_PREFIX: namespace,
       DESTROYER_NAMESPACE: namespace,
@@ -122,7 +125,7 @@ export class ComposeStack {
 
   async preflight(): Promise<void> {
     await access(this.#composeFile);
-    if (this.#config.fitzImage === undefined) {
+    if (this.#config.destroyerImage === undefined) {
       await access(join(this.#config.fitzSourceDir, "Dockerfile"));
     }
     await runCommand("docker", ["version"], { cwd: this.#config.rootDir });
@@ -130,9 +133,12 @@ export class ComposeStack {
     await this.#artifacts.event("preflight_complete", {
       project: this.#project,
       composeFile: this.#composeFile,
-      ...(this.#config.fitzImage === undefined
+      ...(this.#config.destroyerImage === undefined
         ? { fitzSourceDir: this.#config.fitzSourceDir }
-        : { fitzImage: this.#config.fitzImage }),
+        : {
+            fitzImage: this.#config.fitzImage ?? "ghcr.io/cntryl/fitz:latest",
+            destroyerImage: this.#config.destroyerImage,
+          }),
     });
   }
 
@@ -140,17 +146,19 @@ export class ComposeStack {
     await this.compose(["down", "--volumes", "--remove-orphans"], { allowFailure: true });
   }
 
-  async build(): Promise<void> {
+  async prepareImages(): Promise<void> {
     const startedAt = performance.now();
-    const fitzMode = this.#config.fitzImage === undefined ? "source" : "image";
-    await this.#artifacts.event("build_started", { fitzMode });
-    if (this.#config.fitzImage === undefined) {
+    const mode = this.#config.destroyerImage === undefined ? "source" : "published-images";
+    await this.#artifacts.event("image_preparation_started", { mode });
+    if (this.#config.destroyerImage === undefined) {
       await this.compose(["build", "fitz", "client", "storage-proxy"], { stream: true });
     } else {
-      await this.compose(["pull", "fitz"], { stream: true });
-      await this.compose(["build", "client", "storage-proxy"], { stream: true });
+      await this.compose(["pull", "fitz", "client", "storage-proxy"], { stream: true });
     }
-    await this.#artifacts.event("build_complete", { elapsedMs: elapsedMs(startedAt) });
+    await this.#artifacts.event("image_preparation_complete", {
+      mode,
+      elapsedMs: elapsedMs(startedAt),
+    });
   }
 
   async startCore(): Promise<void> {

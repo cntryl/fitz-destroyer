@@ -275,19 +275,23 @@ Complete-suite results are written to
 `artifacts/suites/<suite-id>/summary.json`, with ordered structured scenario
 results and pass/fail totals.
 
-GitHub Actions runs every concrete smoke scenario as an independent `scenarios`
-matrix entry. Each entry uses `compose.destroyer.yml` to pull the public
-`ghcr.io/cntryl/fitz:latest` image and uploads its `artifacts/` directory even
-when the scenario fails. Local runs continue to use `compose.yml` and build the
-sibling Fitz checkout so source changes can be tested before publication.
+GitHub Actions first builds one multi-role Destroyer harness image, publishes it
+to GHCR under the workflow commit, and exposes its immutable digest. Every
+concrete smoke scenario then runs as an independent `scenarios` matrix entry
+using `compose.destroyer.yml` to pull that exact harness digest and the public
+`ghcr.io/cntryl/fitz:latest` image. Each entry uploads its `artifacts/` directory
+even when the scenario fails. Local runs continue to use `compose.yml` and build
+the sibling Fitz checkout plus the local harness sources so uncommitted changes
+can be tested before publication.
+
 After the complete matrix finishes, the `analysis` job downloads all scenario
 evidence, runs `npm run check`, and turns the structured scenario summaries into
 the workflow's final Markdown and JSON report. The report is shown in the job
 summary and retained as the `fitz-destroyer-report-*` artifact. The Destroyer
-workflow bounds parallel scenario jobs at 20 minutes and final analysis at 5
-minutes; its soak matrix entry runs for 8 minutes so the workflow stays within
-its intended 25-minute wall-clock budget. Local soak runs retain the 15-minute
-default.
+workflow bounds the image build at 5 minutes, parallel scenario jobs at 15
+minutes, and final analysis at 5 minutes. Its soak matrix entry runs for 8
+minutes, keeping the intended wall-clock budget at 25 minutes. Local soak runs
+retain the 15-minute default.
 
 The harness publishes Fitz and the storage proxy's ephemeral control port only
 on `127.0.0.1`. Sqrzl and the proxy data port are reachable only inside the
@@ -323,9 +327,10 @@ fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-c
   --keep                          Preserve a successful Compose stack
 ```
 
-Every scenario invokes Compose builds. Repeated runs rely on Docker layer
-caching, so evidence always corresponds to the current Fitz, client, and proxy
-sources without discarding cached layers.
+Local scenarios invoke Compose builds and rely on Docker layer caching, so their
+evidence corresponds to the current Fitz, client, and proxy sources. Destroyer
+workflow scenarios instead pull the exact harness digest produced by the
+preceding `build` job, avoiding redundant matrix builds.
 
 The default `--client-profile end-to-end` keeps the configured fitz-ts async
 handler concurrency, so a run includes realistic client-side pressure. Use

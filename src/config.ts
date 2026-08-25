@@ -106,6 +106,7 @@ export type RunConfig = Scale & {
   rootDir: string;
   fitzSourceDir: string;
   fitzImage: string | undefined;
+  destroyerImage: string | undefined;
 };
 
 const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
@@ -292,6 +293,7 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
     rootDir,
     fitzSourceDir: resolve(env.FITZ_SOURCE_DIR ?? resolve(rootDir, "../fitz")),
     fitzImage: env.FITZ_IMAGE?.trim() || undefined,
+    destroyerImage: env.DESTROYER_IMAGE?.trim() || undefined,
   };
 }
 

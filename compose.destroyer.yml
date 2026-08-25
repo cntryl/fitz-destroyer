@@ -12,9 +12,9 @@ services:
       - sqrzl-blobs:/app/blobs
 
   storage-proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile.storage-proxy
+    image: "${DESTROYER_IMAGE:?DESTROYER_IMAGE must identify the published harness image}"
+    command:
+      - storage-proxy.mjs
     restart: "no"
     depends_on:
       - sqrzl
@@ -59,9 +59,7 @@ services:
       - fitz-cache:/data
 
   client:
-    build:
-      context: .
-      dockerfile: Dockerfile.client
+    image: "${DESTROYER_IMAGE:?DESTROYER_IMAGE must identify the published harness image}"
     profiles:
       - clients
     restart: "no"

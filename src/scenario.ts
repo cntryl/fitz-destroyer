@@ -89,16 +89,19 @@ export async function runScenario(
       sampleMs: config.sampleMs,
       iterations: config.iterations,
       port: config.port,
-      ...(config.fitzImage === undefined
+      ...(config.destroyerImage === undefined
         ? { fitzSourceDir: config.fitzSourceDir }
-        : { fitzImage: config.fitzImage }),
+        : {
+            fitzImage: config.fitzImage ?? "ghcr.io/cntryl/fitz:latest",
+            destroyerImage: config.destroyerImage,
+          }),
     },
   });
 
   try {
     await stack.preflight();
     await stack.reset();
-    await stack.build();
+    await stack.prepareImages();
     await stack.startCore();
     phase = "workload";
 

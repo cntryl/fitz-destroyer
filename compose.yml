@@ -63,7 +63,7 @@ services:
   client:
     build:
       context: .
-      dockerfile: Dockerfile.client
+      dockerfile: Dockerfile.destroyer
     profiles:
       - clients
     restart: "no"

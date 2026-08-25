@@ -22,6 +22,7 @@ test("should_apply_standard_scale_and_live_options", () => {
   const config = parseArgs(args, {
     FITZ_SOURCE_DIR: "/tmp/fitz",
     FITZ_IMAGE: "ghcr.io/cntryl/fitz:latest",
+    DESTROYER_IMAGE: "ghcr.io/cntryl/fitz-destroyer@sha256:1234",
   });
 
   // Assert
@@ -35,6 +36,7 @@ test("should_apply_standard_scale_and_live_options", () => {
   assert.equal(config.handlerDelayMs, 3);
   assert.equal(config.fitzSourceDir, "/tmp/fitz");
   assert.equal(config.fitzImage, "ghcr.io/cntryl/fitz:latest");
+  assert.equal(config.destroyerImage, "ghcr.io/cntryl/fitz-destroyer@sha256:1234");
 });
 
 test("should_allow_explicit_dimensions_to_override_scale", () => {
