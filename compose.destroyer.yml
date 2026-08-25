@@ -1,4 +1,4 @@
-# CI Fitz recovery harness. The host runner owns lifecycle and cleanup.
+# Published-image Fitz recovery harness. The host runner owns lifecycle and cleanup.
 services:
   sqrzl:
     image: "${SQRZL_IMAGE:-ghcr.io/sqrzl/sqrzl-emulator:latest}"

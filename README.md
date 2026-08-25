@@ -276,17 +276,18 @@ Complete-suite results are written to
 results and pass/fail totals.
 
 GitHub Actions runs every concrete smoke scenario as an independent `scenarios`
-matrix entry. Each entry uses `compose.ci.yml` to pull the public
+matrix entry. Each entry uses `compose.destroyer.yml` to pull the public
 `ghcr.io/cntryl/fitz:latest` image and uploads its `artifacts/` directory even
 when the scenario fails. Local runs continue to use `compose.yml` and build the
 sibling Fitz checkout so source changes can be tested before publication.
 After the complete matrix finishes, the `analysis` job downloads all scenario
 evidence, runs `npm run check`, and turns the structured scenario summaries into
 the workflow's final Markdown and JSON report. The report is shown in the job
-summary and retained as the `fitz-destroyer-report-*` artifact. CI bounds the
-parallel scenario jobs at 20 minutes and the final analysis at 5 minutes; its
-soak matrix entry runs for 8 minutes so the workflow stays within its intended
-25-minute wall-clock budget. Local soak runs retain the 15-minute default.
+summary and retained as the `fitz-destroyer-report-*` artifact. The Destroyer
+workflow bounds parallel scenario jobs at 20 minutes and final analysis at 5
+minutes; its soak matrix entry runs for 8 minutes so the workflow stays within
+its intended 25-minute wall-clock budget. Local soak runs retain the 15-minute
+default.
 
 The harness publishes Fitz and the storage proxy's ephemeral control port only
 on `127.0.0.1`. Sqrzl and the proxy data port are reachable only inside the

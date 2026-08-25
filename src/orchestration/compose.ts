@@ -100,7 +100,7 @@ export class ComposeStack {
     this.#artifacts = artifacts;
     this.#composeFile = join(
       config.rootDir,
-      config.fitzImage === undefined ? "compose.yml" : "compose.ci.yml",
+      config.fitzImage === undefined ? "compose.yml" : "compose.destroyer.yml",
     );
     this.#env = {
       FITZ_SOURCE_DIR: config.fitzSourceDir,

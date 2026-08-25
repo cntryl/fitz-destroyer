@@ -3,7 +3,7 @@
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ScenarioResult } from "./scenario.js";
-import { buildCiReport, renderCiReport } from "./report.js";
+import { buildDestroyerReport, renderDestroyerReport } from "./report.js";
 import { ALL_SCENARIOS } from "./suite.js";
 
 await main().catch((error: unknown) => {
@@ -14,13 +14,13 @@ await main().catch((error: unknown) => {
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
   const summaries = await loadScenarioResults(options.artifactsDir);
-  const report = buildCiReport(
+  const report = buildDestroyerReport(
     ALL_SCENARIOS,
     summaries,
     options.analysisResult,
     options.matrixResult,
   );
-  const markdown = renderCiReport(report);
+  const markdown = renderDestroyerReport(report);
   await mkdir(options.outputDir, { recursive: true });
   await Promise.all([
     writeFile(join(options.outputDir, "summary.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8"),

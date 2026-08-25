@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCiReport, renderCiReport } from "../src/report.js";
+import { buildDestroyerReport, renderDestroyerReport } from "../src/report.js";
 import type { ConcreteScenario, ScenarioResult } from "../src/scenario.js";
 
 test("should_build_an_ordered_report_from_scenario_artifacts", () => {
   const expected = ["clean-restart", "cache-loss"] as const;
-  const report = buildCiReport(
+  const report = buildDestroyerReport(
     expected,
     [result("cache-loss", "passed"), result("clean-restart", "passed")],
     "success",
@@ -20,7 +20,7 @@ test("should_build_an_ordered_report_from_scenario_artifacts", () => {
 
 test("should_fail_the_report_for_failed_missing_or_duplicate_scenarios", () => {
   const expected = ["clean-restart", "cache-loss", "chaos"] as const;
-  const report = buildCiReport(
+  const report = buildDestroyerReport(
     expected,
     [
       result("clean-restart", "passed"),
@@ -33,12 +33,12 @@ test("should_fail_the_report_for_failed_missing_or_duplicate_scenarios", () => {
 
   assert.equal(report.verdict, "failed");
   assert.deepEqual(report.totals, { expected: 3, reported: 3, passed: 0, failed: 2, missing: 1 });
-  assert.match(renderCiReport(report), /clean-restart.*FAIL/u);
-  assert.match(renderCiReport(report), /chaos.*MISSING/u);
+  assert.match(renderDestroyerReport(report), /clean-restart.*FAIL/u);
+  assert.match(renderDestroyerReport(report), /chaos.*MISSING/u);
 });
 
 test("should_include_repository_analysis_in_the_final_verdict", () => {
-  const report = buildCiReport(
+  const report = buildDestroyerReport(
     ["clean-restart"],
     [result("clean-restart", "passed")],
     "failure",
@@ -46,7 +46,7 @@ test("should_include_repository_analysis_in_the_final_verdict", () => {
   );
 
   assert.equal(report.verdict, "failed");
-  assert.match(renderCiReport(report), /Analysis: failure/u);
+  assert.match(renderDestroyerReport(report), /Analysis: failure/u);
 });
 
 function result(scenario: ConcreteScenario, verdict: ScenarioResult["verdict"]): ScenarioResult {

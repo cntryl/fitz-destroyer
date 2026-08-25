@@ -1,9 +1,9 @@
-name: CI
+name: Destroyer
 
 on: workflow_dispatch
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: destroyer-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -121,7 +121,7 @@ jobs:
         run: >-
           npm run report --
           --artifacts-dir "${{ github.workspace }}/scenario-artifacts"
-          --output-dir "${{ github.workspace }}/ci-report"
+          --output-dir "${{ github.workspace }}/destroyer-report"
           --analysis-result "$ANALYSIS_RESULT"
           --matrix-result "$MATRIX_RESULT"
         working-directory: fitz-destroyer
@@ -131,6 +131,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fitz-destroyer-report-${{ github.run_attempt }}
-          path: ci-report/
+          path: destroyer-report/
           if-no-files-found: error
           retention-days: 30

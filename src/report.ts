@@ -1,6 +1,6 @@
 import type { ConcreteScenario, FailureClassification, ScenarioResult } from "./scenario.js";
 
-export type CiReportEntry = {
+export type DestroyerReportEntry = {
   scenario: ConcreteScenario;
   verdict: "passed" | "failed" | "missing";
   durationMs: number | null;
@@ -10,7 +10,7 @@ export type CiReportEntry = {
   error?: string;
 };
 
-export type CiReport = {
+export type DestroyerReport = {
   schemaVersion: 1;
   generatedAt: string;
   verdict: "passed" | "failed";
@@ -23,17 +23,17 @@ export type CiReport = {
     failed: number;
     missing: number;
   };
-  results: readonly CiReportEntry[];
+  results: readonly DestroyerReportEntry[];
 };
 
-export function buildCiReport(
+export function buildDestroyerReport(
   expectedScenarios: readonly ConcreteScenario[],
   scenarioResults: readonly ScenarioResult[],
   analysisResult: string,
   matrixResult: string,
   generatedAt = new Date().toISOString(),
-): CiReport {
-  const results = expectedScenarios.map((scenario): CiReportEntry => {
+): DestroyerReport {
+  const results = expectedScenarios.map((scenario): DestroyerReportEntry => {
     const matches = scenarioResults.filter((result) => result.scenario === scenario);
     if (matches.length === 0) {
       return {
@@ -94,10 +94,10 @@ export function buildCiReport(
   };
 }
 
-export function renderCiReport(report: CiReport): string {
+export function renderDestroyerReport(report: DestroyerReport): string {
   const status = report.verdict === "passed" ? "Passed" : "Failed";
   const lines = [
-    "# Fitz Destroyer CI report",
+    "# Fitz Destroyer report",
     "",
     `**Overall: ${status}**`,
     "",
@@ -119,7 +119,7 @@ export function renderCiReport(report: CiReport): string {
   return `${lines.join("\n")}\n`;
 }
 
-function verdictLabel(verdict: CiReportEntry["verdict"]): string {
+function verdictLabel(verdict: DestroyerReportEntry["verdict"]): string {
   if (verdict === "passed") return "PASS";
   if (verdict === "failed") return "FAIL";
   return "MISSING";
