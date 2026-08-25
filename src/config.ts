@@ -18,11 +18,19 @@ export type ScenarioName =
   | "connection-storm"
   | "domain-pressure"
   | "durability-crash-cuts"
+  | "soak"
+  | "storage-faults"
+  | "queue-lifecycle"
+  | "schedule-outage"
+  | "transaction-contention"
+  | "stream-replay"
+  | "live-churn"
   | "all";
 export type ScaleName = "smoke" | "standard" | "large";
 export type ClientProfile = "end-to-end" | "broker-isolation";
 
 export const RPC_STREAM_MAX_FRAME_BYTES = 65_506;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
 type Scale = {
   resources: number;
@@ -35,6 +43,7 @@ type Scale = {
   rpcStreamFrameBytes: number;
   rpcStreamReaderDelayMs: number;
   scheduleLeadMs: number;
+  iterations: number;
 };
 
 export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
@@ -49,6 +58,7 @@ export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
     rpcStreamFrameBytes: 1_024,
     rpcStreamReaderDelayMs: 1,
     scheduleLeadMs: 45_000,
+    iterations: 8,
   },
   standard: {
     resources: 10,
@@ -61,6 +71,7 @@ export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
     rpcStreamFrameBytes: RPC_STREAM_MAX_FRAME_BYTES,
     rpcStreamReaderDelayMs: 1,
     scheduleLeadMs: 120_000,
+    iterations: 32,
   },
   large: {
     resources: 10,
@@ -73,6 +84,7 @@ export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
     rpcStreamFrameBytes: RPC_STREAM_MAX_FRAME_BYTES,
     rpcStreamReaderDelayMs: 2,
     scheduleLeadMs: 300_000,
+    iterations: 100,
   },
 };
 
@@ -82,17 +94,21 @@ export type RunConfig = Scale & {
   seed: number;
   port: number;
   startupTimeoutMs: number;
+  requestTimeoutMs: number;
   clientReplicas: number;
   phaseMs: number;
+  durationMs: number;
+  sampleMs: number;
+  iterations: number;
   keep: boolean;
-  reuseImages: boolean;
   bombardDomains: readonly Domain[];
   clientProfile: ClientProfile;
   rootDir: string;
   fitzSourceDir: string;
+  fitzImage: string | undefined;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -103,6 +119,9 @@ const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-c
   --startup-timeout-ms <n>        Readiness deadline (default: 180000)
   --clients <n>                   Bombard client replicas (default: 4)
   --phase-ms <n>                  Healthy traffic time around faults (default: 5000)
+  --duration-ms <n>               Soak duration (default: 900000)
+  --sample-ms <n>                 Soak/broker sampling interval (default: 1000)
+  --iterations <n>                Deterministic fault iterations (scale default)
   --concurrency <n>               Live operations per producer/caller (scale default)
   --handler-delay-ms <n>          Live consumer/worker delay (scale default)
   --schedule-lead-ms <n>          Minimum lead before the due minute (scale default)
@@ -112,7 +131,6 @@ const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-c
   --rpc-stream-frames <n>         Response frames per streaming call (scale default)
   --rpc-stream-frame-bytes <n>    Bytes per streaming response frame (scale default)
   --rpc-stream-reader-delay-ms <n> Delay after each received frame (scale default)
-  --reuse-images                  Skip builds and reuse existing local images
   --keep                          Preserve a successful Compose stack`;
 
 export function usage(): string {
@@ -127,15 +145,10 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
 
   const values = new Map<string, string>();
   let keep = false;
-  let reuseImages = false;
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--keep") {
       keep = true;
-      continue;
-    }
-    if (arg === "--reuse-images") {
-      reuseImages = true;
       continue;
     }
     if (arg === "--help" || arg === "-h") {
@@ -162,6 +175,9 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
     "--startup-timeout-ms",
     "--clients",
     "--phase-ms",
+    "--duration-ms",
+    "--sample-ms",
+    "--iterations",
     "--concurrency",
     "--handler-delay-ms",
     "--schedule-lead-ms",
@@ -182,6 +198,11 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
   const clientProfile = values.get("--client-profile") ?? "end-to-end";
   if (!isClientProfile(clientProfile)) throw new Error(`Invalid client profile: ${clientProfile}`);
   const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
+  const durationMs = integerOption(values, "--duration-ms", 900_000, 1_000, 86_400_000);
+  const sampleMs = integerOption(values, "--sample-ms", 1_000, 100, 60_000);
+  if (sampleMs > durationMs) {
+    throw new Error("--sample-ms must not exceed --duration-ms");
+  }
 
   return {
     scenario,
@@ -204,8 +225,18 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
       1_000,
       3_600_000,
     ),
+    requestTimeoutMs: environmentInteger(
+      env,
+      "DESTROYER_REQUEST_TIMEOUT_MS",
+      DEFAULT_REQUEST_TIMEOUT_MS,
+      100,
+      600_000,
+    ),
     clientReplicas: integerOption(values, "--clients", 4, 1, 100),
     phaseMs: integerOption(values, "--phase-ms", 5_000, 1_000, 600_000),
+    durationMs,
+    sampleMs,
+    iterations: integerOption(values, "--iterations", preset.iterations, 1, 10_000),
     liveConcurrency: integerOption(
       values,
       "--concurrency",
@@ -256,11 +287,11 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
       60_000,
     ),
     keep,
-    reuseImages,
     bombardDomains: parseDomainSelection(values.get("--domains")),
     clientProfile,
     rootDir,
     fitzSourceDir: resolve(env.FITZ_SOURCE_DIR ?? resolve(rootDir, "../fitz")),
+    fitzImage: env.FITZ_IMAGE?.trim() || undefined,
   };
 }
 
@@ -272,6 +303,22 @@ function integerOption(
   maximum: number,
 ): number {
   const raw = values.get(name);
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return parsed;
+}
+
+function environmentInteger(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const raw = env[name];
   if (raw === undefined) return fallback;
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
@@ -297,6 +344,13 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "connection-storm" ||
     value === "domain-pressure" ||
     value === "durability-crash-cuts" ||
+    value === "soak" ||
+    value === "storage-faults" ||
+    value === "queue-lifecycle" ||
+    value === "schedule-outage" ||
+    value === "transaction-contention" ||
+    value === "stream-replay" ||
+    value === "live-churn" ||
     value === "all"
   );
 }

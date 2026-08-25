@@ -19,7 +19,10 @@ test("should_apply_standard_scale_and_live_options", () => {
   ];
 
   // Act
-  const config = parseArgs(args, { FITZ_SOURCE_DIR: "/tmp/fitz" });
+  const config = parseArgs(args, {
+    FITZ_SOURCE_DIR: "/tmp/fitz",
+    FITZ_IMAGE: "ghcr.io/cntryl/fitz:latest",
+  });
 
   // Assert
   assert.equal(config.scenario, "rpc-pressure");
@@ -31,6 +34,7 @@ test("should_apply_standard_scale_and_live_options", () => {
   assert.equal(config.liveConcurrency, 96);
   assert.equal(config.handlerDelayMs, 3);
   assert.equal(config.fitzSourceDir, "/tmp/fitz");
+  assert.equal(config.fitzImage, "ghcr.io/cntryl/fitz:latest");
 });
 
 test("should_allow_explicit_dimensions_to_override_scale", () => {
@@ -78,7 +82,6 @@ test("should_accept_connection_storm", () => {
     "standard",
     "--clients",
     "6",
-    "--reuse-images",
   ];
 
   // Act
@@ -88,7 +91,34 @@ test("should_accept_connection_storm", () => {
   assert.equal(config.scenario, "connection-storm");
   assert.equal(config.resources, 10);
   assert.equal(config.clientReplicas, 6);
-  assert.equal(config.reuseImages, true);
+});
+
+test("should_reject_removed_reuse_images_option", () => {
+  assert.throws(() => parseArgs(["clean-restart", "--reuse-images"], {}), /Missing value/);
+});
+
+test("should_apply_soak_and_iteration_options", () => {
+  const config = parseArgs(
+    ["soak", "--duration-ms", "60000", "--sample-ms", "500", "--iterations", "17"],
+    {},
+  );
+
+  assert.equal(config.durationMs, 60_000);
+  assert.equal(config.sampleMs, 500);
+  assert.equal(config.iterations, 17);
+});
+
+test("should_apply_crash_cut_iterations_from_scale", () => {
+  assert.equal(parseArgs(["durability-crash-cuts", "--scale", "smoke"], {}).iterations, 8);
+  assert.equal(parseArgs(["durability-crash-cuts", "--scale", "standard"], {}).iterations, 32);
+  assert.equal(parseArgs(["durability-crash-cuts", "--scale", "large"], {}).iterations, 100);
+});
+
+test("should_reject_a_sample_interval_longer_than_the_soak", () => {
+  assert.throws(
+    () => parseArgs(["soak", "--duration-ms", "1000", "--sample-ms", "2000"], {}),
+    /must not exceed/,
+  );
 });
 
 test("should_apply_schedule_delivery_lead_from_scale_and_override", () => {

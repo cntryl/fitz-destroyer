@@ -1,4 +1,4 @@
-export type LiveDomain = "notice" | "rpc" | "schedule";
+export type LiveDomain = "kv" | "stream" | "notice" | "rpc" | "lease" | "schedule";
 
 export type CleanupMetrics = {
   failures: number;
@@ -50,11 +50,17 @@ export function isLiveDomainQuiescent(
 ): boolean {
   if (snapshot.cleanup.pending !== 0 || snapshot.cleanup.oldestAgeMs !== 0) return false;
   const fields =
-    domain === "notice"
+    domain === "kv"
+      ? ["transactions_active"]
+      : domain === "stream"
+        ? ["append_sessions_active"]
+        : domain === "notice"
       ? ["subscriptions_active", "routes_active"]
       : domain === "rpc"
         ? ["workers_registered", "requests_pending", "pending_routes_active"]
-        : [
+        : domain === "lease"
+          ? ["leases_active", "waiter_depth"]
+          : [
             "schedules_active",
             "subscriptions_active",
             "pending_fire_claims",
@@ -69,7 +75,11 @@ export function assertNoDomainFailures(
   after: Readonly<Record<string, unknown>>,
 ): void {
   const fields =
-    domain === "notice"
+    domain === "kv"
+      ? ["commits_failed_total", "invalid_transaction_rejects_total"]
+      : domain === "stream"
+        ? ["failure_total", "append_conflicts_total", "notify_drops_total"]
+        : domain === "notice"
       ? ["failure_total", "delivery_drops_total", "wildcard_limit_rejects_total"]
       : domain === "rpc"
         ? [
@@ -84,7 +94,9 @@ export function assertNoDomainFailures(
             "invalid_sequence_errors_forwarded_total",
             "invalid_sequence_errors_dropped_total",
           ]
-        : [
+        : domain === "lease"
+          ? ["failure_total", "acquire_timeouts_total", "invalid_token_rejects_total"]
+          : [
             "notify_failures_total",
             "ack_failures_total",
             "create_persistence_failures_total",

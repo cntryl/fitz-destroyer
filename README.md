@@ -1,11 +1,12 @@
 # Fitz Destroyer
 
-Fitz Destroyer is a disposable local recovery harness. It builds Fitz from the
-sibling `../fitz` checkout, stores its cloud data in the Sqrzl S3 emulator, and
-builds its `@cntryl/fitz` traffic generators into a separate Docker image. The
-host driver controls lifecycle; all broker requests originate in disposable
-non-root Distroless Node client containers. It does not need AWS credentials or
-an AWS account.
+Fitz Destroyer is a disposable local recovery harness. Local runs build Fitz
+from the sibling `../fitz` checkout, store its cloud data in the Sqrzl S3
+emulator, and route storage through a Compose-local fault proxy. It builds its
+`@cntryl/fitz` traffic generators into a separate Docker image. The host driver
+controls lifecycle; all broker requests originate in disposable non-root
+Distroless Node client containers. It does not need AWS credentials or an AWS
+account.
 
 This is a correctness and failure-recovery tool, not a performance benchmark.
 Its timings are useful for spotting large regressions, but they are not stable
@@ -45,11 +46,13 @@ data. It loads the same workload, stops Fitz, removes only that run's
 restart and verifies it again.
 
 `durability-crash-cuts` first acknowledges one Queue enqueue, KV commit, Stream
-commit, and Schedule create. It then pauses Sqrzl so a second operation in each
-domain is in flight, sends `SIGKILL` to Fitz, resumes Sqrzl, and restarts the
-broker. Its ledger requires every acknowledged operation to be observable and
-allows an interrupted operation to be either present or absent because its
-outcome is ambiguous. An operation that was never started must never appear.
+commit, and Schedule create. It then performs deterministic seeded iterations
+around request dispatch, blocked provider access, provider recovery, broker
+kill, acknowledgement, and restart with storage in flight. The default is 8
+iterations for smoke, 32 for standard, and 100 for large. Its ledger requires
+every acknowledged operation to be observable, allows an interrupted operation
+to be present or absent, rejects duplicates, and records the seed and cut
+identity for every iteration.
 
 `session-boundaries` holds a Queue reservation, an uncommitted KV transaction,
 an uncommitted Stream append session, and a Lease across a Fitz `SIGKILL` and
@@ -121,8 +124,40 @@ fails the run; recovered session-cleanup retries are recorded in the artifacts.
 
 `domain-pressure` runs a short, continuously bombarding client fleet without
 injecting faults. Use `--domains` to isolate one domain or an interference pair.
-It requires every selected domain to make progress on every client and fails if
-any selected-domain client operation errors.
+It requires every selected domain to make progress on every client in each
+ten-second window and fails on definite operation errors. Queue operations with
+an unknown durable outcome are accepted only when exact reconciliation proves
+that every deterministic sequence resolved at most once.
+`pressure-evidence.json` contains per-client/domain/stage totals, latency
+percentiles, normalized error samples, Queue reconciliation, broker snapshots,
+and diagnostic warnings.
+
+`soak` runs the same exact pressure/reconciliation checks for `--duration-ms`
+(15 minutes by default), sampling Fitz every `--sample-ms` (one second by
+default). It additionally writes `soak-samples.ndjson`. High p95 latency,
+three-sample pending growth, and post-warmup RSS growth are warnings rather than
+performance gates.
+
+`storage-faults` routes Fitz-to-Sqrzl traffic through the local proxy and cycles
+bounded latency, connection reset, a five-second partition, restored-provider
+traffic, and a Fitz crash with storage requests in flight. Its ledger records
+acknowledged, failed, and ambiguous outcomes plus admission, routing,
+persistence, or recovery attribution. A restored proxy must admit a healthy
+probe and every acknowledged durable value must survive exactly once.
+
+`queue-lifecycle` covers partial batch completion, lease expiry, disconnect
+abandonment/redelivery, a deep deterministic backlog, and consumer progress
+across the fleet. `transaction-contention` requires one winner for conflicting
+KV commits and verifies rollback isolation, delete visibility, and cleanup of a
+killed long-lived transaction. `stream-replay` covers concurrent offset
+conflicts, paged and deliberately slow replay, and a 60,000-byte response
+boundary with byte-for-byte verification.
+
+`schedule-outage` keeps Fitz down across a due minute and verifies Fitz's
+documented no-catch-up rule, then observes the next repeated occurrence while
+cancellations race that firing and subscriber acknowledgements are delayed.
+`live-churn` composes repeated Notice/RPC registration waves, Lease owner loss
+with waiters, and RPC worker replacement while streaming calls are active.
 
 `hot-route-canary` directs all bombarders at shared routes in the domains
 selected by `--domains`. Shared KV, Stream, Schedule, and Lease operations can
@@ -154,7 +189,8 @@ After every fault, the driver requires fresh successful operations in every
 domain. Expected errors during each outage are counted by the clients and kept
 in their logs.
 
-Run both with separate isolated stacks:
+Run the complete ordered suite with isolated stacks and a distinct port per
+scenario:
 
 ```sh
 npm run destroy -- all --scale smoke --clients 4
@@ -162,11 +198,11 @@ npm run destroy -- all --scale smoke --clients 4
 
 ## Load sizes
 
-| Scale | Durable families | Entries / live operations | Payload bytes | Live concurrency | Schedule lead |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `smoke` | 2 | 20 | 256 | 8 | 45 s |
-| `standard` | 10 | 1,000 | 1,024 | 64 | 120 s |
-| `large` | 10 | 5,000 | 1,024 | 128 | 300 s |
+| Scale | Durable families | Entries / live operations | Payload bytes | Live concurrency | Schedule lead | Fault iterations |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `smoke` | 2 | 20 | 256 | 8 | 45 s | 8 |
+| `standard` | 10 | 1,000 | 1,024 | 64 | 120 s | 32 |
+| `large` | 10 | 5,000 | 1,024 | 128 | 300 s | 100 |
 
 The RPC stream hose has intentionally different presets:
 
@@ -193,6 +229,13 @@ npm run destroy -- rpc-pressure --scale standard --clients 8
 npm run destroy -- rpc-stream-hose --scale standard --clients 4
 npm run destroy -- connection-storm --scale standard --clients 8
 npm run destroy -- domain-pressure --domains queue,notice --clients 8 --phase-ms 5000
+npm run destroy -- soak --duration-ms 900000 --sample-ms 1000
+npm run destroy -- storage-faults --scale smoke --iterations 8
+npm run destroy -- queue-lifecycle --scale smoke --clients 4
+npm run destroy -- schedule-outage --scale smoke --clients 4
+npm run destroy -- transaction-contention --scale smoke
+npm run destroy -- stream-replay --scale standard --handler-delay-ms 2
+npm run destroy -- live-churn --scale smoke --clients 4
 npm run destroy -- hot-route-canary --domains queue,kv,stream --clients 8
 npm run destroy -- protocol-abuse --scale standard --clients 8
 npm run destroy -- chaos --clients 8 --phase-ms 10000
@@ -209,8 +252,11 @@ npm run destroy -- clean-restart \
 
 Every scenario gets a unique Compose project name and Fitz storage prefix. On
 success, its containers, network, and both named volumes are removed. On
-failure, the stack is deliberately left intact for inspection and the CLI prints
-the exact cleanup command. Pass `--keep` to preserve a successful stack too.
+standalone failure, the stack is deliberately left intact for inspection and
+the CLI prints the exact cleanup command. An `all` suite always removes the exact
+project for every result, including failures, continues in order, and exits
+nonzero after the final scenario when any failed. Pass `--keep` to preserve a
+successful standalone stack.
 
 Run artifacts are written to `artifacts/<run-id>/` and include:
 
@@ -222,14 +268,35 @@ Run artifacts are written to `artifacts/<run-id>/` and include:
 - Schedule delivery's expected/observed cardinality, missing-sequence samples,
   and client saturation events in `schedule-delivery-observed.json`
 - durability crash-cut, Queue redelivery, and Lease fencing ledgers
+- `pressure-evidence.json` and, for soak, `soak-samples.ndjson`
+- `storage-fault-ledger.json` plus Queue/KV/Stream/Schedule/live-churn ledgers
 
-The harness publishes Fitz only on `127.0.0.1`. Sqrzl is reachable only inside
-the Compose network.
+Complete-suite results are written to
+`artifacts/suites/<suite-id>/summary.json`, with ordered structured scenario
+results and pass/fail totals.
+
+GitHub Actions runs every concrete smoke scenario as an independent `scenarios`
+matrix entry. Each entry uses `compose.ci.yml` to pull the public
+`ghcr.io/cntryl/fitz:latest` image and uploads its `artifacts/` directory even
+when the scenario fails. Local runs continue to use `compose.yml` and build the
+sibling Fitz checkout so source changes can be tested before publication.
+After the complete matrix finishes, the `analysis` job downloads all scenario
+evidence, runs `npm run check`, and turns the structured scenario summaries into
+the workflow's final Markdown and JSON report. The report is shown in the job
+summary and retained as the `fitz-destroyer-report-*` artifact. CI bounds the
+parallel scenario jobs at 20 minutes and the final analysis at 5 minutes; its
+soak matrix entry runs for 8 minutes so the workflow stays within its intended
+25-minute wall-clock budget. Local soak runs retain the 15-minute default.
+
+The harness publishes Fitz and the storage proxy's ephemeral control port only
+on `127.0.0.1`. Sqrzl and the proxy data port are reachable only inside the
+Compose network. The host controls faults; no container receives the Docker
+socket.
 
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -240,6 +307,9 @@ fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-c
   --startup-timeout-ms <n>        `/readyz` deadline (default: 180000)
   --clients <n>                   Bombard client replicas (default: 4)
   --phase-ms <n>                  Healthy traffic time around faults (default: 5000)
+  --duration-ms <n>               Soak duration (default: 900000)
+  --sample-ms <n>                 Soak/broker sampling interval (default: 1000)
+  --iterations <n>                Deterministic fault iterations (scale default)
   --concurrency <n>               Live operations per producer/caller (scale default)
   --handler-delay-ms <n>          Live consumer/worker delay (scale default)
   --schedule-lead-ms <n>          Minimum lead before the due minute (scale default)
@@ -249,13 +319,12 @@ fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-c
   --rpc-stream-frames <n>         Response frames per streaming call (scale default)
   --rpc-stream-frame-bytes <n>    Bytes per streaming response frame (scale default)
   --rpc-stream-reader-delay-ms <n> Delay after each received frame (scale default)
-  --reuse-images                  Skip builds and reuse existing local images
   --keep                          Preserve a successful Compose stack
 ```
 
-Use `--reuse-images` for rapid repeated runs only after both local images have
-been built from the source you intend to test. The default rebuild remains the
-safe choice after changing Fitz or the harness client.
+Every scenario invokes Compose builds. Repeated runs rely on Docker layer
+caching, so evidence always corresponds to the current Fitz, client, and proxy
+sources without discarding cached layers.
 
 The default `--client-profile end-to-end` keeps the configured fitz-ts async
 handler concurrency, so a run includes realistic client-side pressure. Use

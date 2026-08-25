@@ -18,6 +18,7 @@ import {
   runRpcPressureScenario,
 } from "./live-scenarios.js";
 import { numericValue, parseJsonRecords } from "./workload-log.js";
+import type { PressureBrokerSample } from "../pressure.js";
 
 type ProgressRecord = {
   event?: string;
@@ -46,13 +47,31 @@ export type LiveRole =
   | "rpc-caller"
   | "rpc-worker"
   | "rpc-stream-caller"
-  | "rpc-stream-worker";
+  | "rpc-stream-worker"
+  | "pressure-reconciler"
+  | "queue-lifecycle-producer"
+  | "queue-lifecycle-abandoner"
+  | "queue-lifecycle-consumer"
+  | "transaction-contender"
+  | "transaction-holder"
+  | "transaction-verifier"
+  | "stream-replay-worker"
+  | "schedule-outage-producer"
+  | "schedule-outage-canceller"
+  | "schedule-outage-cleanup"
+  | "schedule-outage-subscriber";
 
 export type RoleContainer = {
   id: string;
   name: string;
   workerId: string;
 };
+
+export type StorageProxyFault =
+  | { mode: "healthy" }
+  | { mode: "latency"; latencyMs: number }
+  | { mode: "reset" }
+  | { mode: "partition" };
 
 type ContainerState = {
   status: string;
@@ -65,7 +84,9 @@ export class ComposeStack {
   readonly #namespace: string;
   readonly #artifacts: Artifacts;
   readonly #env: NodeJS.ProcessEnv;
+  readonly #composeFile: string;
   #jobSequence = 0;
+  #metricsUrl: string | undefined;
 
   constructor(
     config: RunConfig,
@@ -77,14 +98,21 @@ export class ComposeStack {
     this.#project = project;
     this.#namespace = namespace;
     this.#artifacts = artifacts;
+    this.#composeFile = join(
+      config.rootDir,
+      config.fitzImage === undefined ? "compose.yml" : "compose.ci.yml",
+    );
     this.#env = {
       FITZ_SOURCE_DIR: config.fitzSourceDir,
+      ...(config.fitzImage === undefined ? {} : { FITZ_IMAGE: config.fitzImage }),
       FITZ_HOST_HTTP_PORT: String(config.port),
       FITZ_STORAGE_PREFIX: namespace,
       DESTROYER_NAMESPACE: namespace,
       DESTROYER_SEED: String(config.seed),
       DESTROYER_DOMAINS: config.bombardDomains.join(","),
       DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
+      DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
+      DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
     };
   }
 
@@ -93,12 +121,18 @@ export class ComposeStack {
   }
 
   async preflight(): Promise<void> {
-    await access(join(this.#config.fitzSourceDir, "Dockerfile"));
+    await access(this.#composeFile);
+    if (this.#config.fitzImage === undefined) {
+      await access(join(this.#config.fitzSourceDir, "Dockerfile"));
+    }
     await runCommand("docker", ["version"], { cwd: this.#config.rootDir });
     await runCommand("docker", ["compose", "version"], { cwd: this.#config.rootDir });
     await this.#artifacts.event("preflight_complete", {
       project: this.#project,
-      fitzSourceDir: this.#config.fitzSourceDir,
+      composeFile: this.#composeFile,
+      ...(this.#config.fitzImage === undefined
+        ? { fitzSourceDir: this.#config.fitzSourceDir }
+        : { fitzImage: this.#config.fitzImage }),
     });
   }
 
@@ -108,13 +142,19 @@ export class ComposeStack {
 
   async build(): Promise<void> {
     const startedAt = performance.now();
-    await this.#artifacts.event("build_started");
-    await this.compose(["build", "fitz", "client"], { stream: true });
+    const fitzMode = this.#config.fitzImage === undefined ? "source" : "image";
+    await this.#artifacts.event("build_started", { fitzMode });
+    if (this.#config.fitzImage === undefined) {
+      await this.compose(["build", "fitz", "client", "storage-proxy"], { stream: true });
+    } else {
+      await this.compose(["pull", "fitz"], { stream: true });
+      await this.compose(["build", "client", "storage-proxy"], { stream: true });
+    }
     await this.#artifacts.event("build_complete", { elapsedMs: elapsedMs(startedAt) });
   }
 
   async startCore(): Promise<void> {
-    await this.compose(["up", "-d", "--no-build", "sqrzl", "fitz"], { stream: true });
+    await this.compose(["up", "-d", "--no-build", "sqrzl", "storage-proxy", "fitz"], { stream: true });
     await this.waitReady();
   }
 
@@ -262,6 +302,97 @@ export class ComposeStack {
     await this.compose(["stop", "-t", "10", "client"], { stream: true, allowFailure: true });
   }
 
+  async stopBombardClientsAndCapture(label: string): Promise<Map<string, string>> {
+    const containers = await this.serviceContainers("client", true);
+    await this.stopClients();
+    const logs = new Map<string, string>();
+    for (const [index, container] of containers.entries()) {
+      const log = await this.containerLogs(container);
+      logs.set(container, log);
+      await this.#artifacts.write(
+        `${label}-client-${index.toString().padStart(3, "0")}.log`,
+        log,
+      );
+    }
+    return logs;
+  }
+
+  async pressureSnapshot(): Promise<PressureBrokerSample> {
+    const metricsUrl = await this.metricsUrl();
+    const containers = await this.serviceContainers("fitz");
+    const container = containers[0];
+    if (containers.length !== 1 || container === undefined) {
+      throw new Error(`Expected one running Fitz container for pressure snapshot, found ${containers.length}`);
+    }
+    const [queue, rpc, prometheus, stats] = await Promise.all([
+      this.fetchJson("/api/v1/all/queue/stats"),
+      this.fetchJson("/api/v1/all/rpc/stats"),
+      this.fetchTextAt(`${metricsUrl}/metrics`, "Prometheus /metrics"),
+      runCommand(
+        "docker",
+        ["stats", "--no-stream", "--format", "{{json .}}", container],
+        { cwd: this.#config.rootDir },
+      ),
+    ]);
+    const record = JSON.parse(stats.stdout.trim()) as { MemUsage?: unknown };
+    if (typeof record.MemUsage !== "string") {
+      throw new Error(`Docker stats omitted Fitz MemUsage: ${stats.stdout.trim()}`);
+    }
+    return {
+      timestamp: new Date().toISOString(),
+      queue,
+      rpc,
+      metrics: {
+        domainOperationsCompletedTotal: prometheusMetric(prometheus, "fitz_domain_operations_total"),
+        domainOperationFailuresTotal: prometheusMetric(prometheus, "fitz_domain_errors_total"),
+        deliveryFailuresTotal: prometheusMetric(prometheus, "fitz_delivery_failures_total"),
+        sessionCleanupPending: prometheusMetric(prometheus, "fitz_session_cleanup_pending"),
+        sessionCleanupFailuresTotal: prometheusMetric(
+          prometheus,
+          "fitz_session_cleanup_failures_total",
+        ),
+      },
+      router: {
+        currentMailboxDepth: prometheusMetric(prometheus, "fitz_mailbox_depth"),
+        ingressBackpressureRetriesTotal: prometheusMetric(
+          prometheus,
+          "fitz_ingress_domain_backpressure_retries_total",
+        ),
+        ingressBackpressureAcceptedTotal: prometheusMetric(
+          prometheus,
+          "fitz_ingress_domain_backpressure_accepted_total",
+        ),
+        ingressBackpressureExhaustedTotal: prometheusMetric(
+          prometheus,
+          "fitz_ingress_domain_backpressure_exhausted_total",
+        ),
+        ingressDispatchTimeoutsTotal: prometheusMetric(
+          prometheus,
+          "fitz_ingress_domain_dispatch_timeouts_total",
+        ),
+        routerBackpressureTotal: prometheusMetric(prometheus, "fitz_router_backpressure_total"),
+        routerHighLaneBackpressureTotal: prometheusMetric(
+          prometheus,
+          "fitz_router_high_lane_backpressure_total",
+        ),
+      },
+      rssBytes: parseDockerMemoryUsage(record.MemUsage),
+    };
+  }
+
+  async waitForPressureQuiescence(): Promise<PressureBrokerSample> {
+    const deadline = Date.now() + Math.min(this.#config.startupTimeoutMs, 30_000);
+    let sample = await this.pressureSnapshot();
+    while (Date.now() < deadline && !isPressureQuiescent(sample)) {
+      await sleep(250);
+      sample = await this.pressureSnapshot();
+    }
+    if (!isPressureQuiescent(sample)) {
+      throw new Error(`Pressure workload did not quiesce: ${JSON.stringify(sample)}`);
+    }
+    return sample;
+  }
+
   async killFitz(): Promise<void> {
     await this.#artifacts.event("fitz_sigkill_started");
     await this.killAndRemoveService("fitz", "fitz-sigkill");
@@ -270,6 +401,10 @@ export class ComposeStack {
 
   async restartFitz(): Promise<void> {
     await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
+    await this.waitReady();
+  }
+
+  async ensureReady(): Promise<void> {
     await this.waitReady();
   }
 
@@ -282,6 +417,24 @@ export class ComposeStack {
   async unpauseSqrzl(): Promise<void> {
     await this.compose(["unpause", "sqrzl"], { stream: true, allowFailure: true });
     await this.#artifacts.event("sqrzl_unpaused");
+  }
+
+  async setStorageProxyFault(fault: StorageProxyFault): Promise<void> {
+    const controlUrl = await this.storageProxyControlUrl();
+    const response = await fetch(`${controlUrl}/fault`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(fault),
+      signal: AbortSignal.timeout(5_000),
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(`Storage proxy rejected ${fault.mode}: HTTP ${response.status}: ${body.slice(0, 500)}`);
+    }
+    await this.#artifacts.event("storage_proxy_fault_changed", {
+      fault,
+      state: JSON.parse(body) as unknown,
+    });
   }
 
   async killOneClientAndRestore(replicas: number): Promise<string> {
@@ -484,7 +637,7 @@ export class ComposeStack {
 
   private async fetchJson(path: string): Promise<Readonly<Record<string, unknown>>> {
     const response = await fetch(`http://127.0.0.1:${this.#config.port}${path}`, {
-      signal: AbortSignal.timeout(2_000),
+      signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
     });
     if (!response.ok) {
       throw new Error(`${path} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
@@ -494,6 +647,38 @@ export class ComposeStack {
       throw new Error(`${path} did not return a JSON object`);
     }
     return value as Readonly<Record<string, unknown>>;
+  }
+
+  private async fetchTextAt(url: string, label: string): Promise<string> {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
+    });
+    if (!response.ok) {
+      throw new Error(`${label} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
+    }
+    return response.text();
+  }
+
+  private async metricsUrl(): Promise<string> {
+    if (this.#metricsUrl !== undefined) return this.#metricsUrl;
+    const result = await this.compose(["port", "fitz", "9090"]);
+    const address = result.stdout.trim().split("\n")[0]?.trim();
+    const match = /^(?:127\.0\.0\.1|\[::1\]|0\.0\.0\.0|\[::\]):(\d+)$/u.exec(address ?? "");
+    if (match?.[1] === undefined) {
+      throw new Error(`Could not resolve loopback Fitz metrics port from '${result.stdout.trim()}'`);
+    }
+    this.#metricsUrl = `http://127.0.0.1:${match[1]}`;
+    return this.#metricsUrl;
+  }
+
+  private async storageProxyControlUrl(): Promise<string> {
+    const result = await this.compose(["port", "storage-proxy", "9100"]);
+    const address = result.stdout.trim().split("\n")[0]?.trim();
+    const match = /^(?:127\.0\.0\.1|\[::1\]|0\.0\.0\.0|\[::\]):(\d+)$/u.exec(address ?? "");
+    if (match?.[1] === undefined) {
+      throw new Error(`Could not resolve loopback storage proxy control port from '${result.stdout.trim()}'`);
+    }
+    return `http://127.0.0.1:${match[1]}`;
   }
 
   private async waitReady(): Promise<void> {
@@ -743,7 +928,7 @@ export class ComposeStack {
       [
         "compose",
         "-f",
-        join(this.#config.rootDir, "compose.yml"),
+        this.#composeFile,
         "--project-name",
         this.#project,
         "--profile",
@@ -795,4 +980,66 @@ function sleep(milliseconds: number): Promise<void> {
 
 function clientHandlerConcurrency(config: RunConfig): number {
   return config.clientProfile === "broker-isolation" ? 1_000_000 : config.liveConcurrency;
+}
+
+export function parseDockerMemoryUsage(value: string): number {
+  const used = value.split("/")[0]?.trim() ?? "";
+  const match = /^(\d+(?:\.\d+)?)\s*([kmgtpe]?i?b)$/iu.exec(used);
+  if (match?.[1] === undefined || match[2] === undefined) {
+    throw new Error(`Cannot parse Docker memory usage '${value}'`);
+  }
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const powers: Readonly<Record<string, number>> = {
+    b: 0,
+    kb: 1,
+    kib: 1,
+    mb: 2,
+    mib: 2,
+    gb: 3,
+    gib: 3,
+    tb: 4,
+    tib: 4,
+    pb: 5,
+    pib: 5,
+    eb: 6,
+    eib: 6,
+  };
+  const power = powers[unit];
+  if (power === undefined) throw new Error(`Cannot parse Docker memory unit '${unit}'`);
+  return Math.round(amount * 1_024 ** power);
+}
+
+function isPressureQuiescent(sample: PressureBrokerSample): boolean {
+  return (
+    numericField(sample.queue, "messages_ready") === 0 &&
+    numericField(sample.queue, "messages_delayed") === 0 &&
+    numericField(sample.queue, "messages_pending") === 0 &&
+    numericField(sample.queue, "inflight_active") === 0 &&
+    numericField(sample.rpc, "workers_registered") === 0 &&
+    numericField(sample.rpc, "requests_pending") === 0 &&
+    numericField(sample.metrics, "sessionCleanupPending") === 0
+  );
+}
+
+function numericField(value: Readonly<Record<string, unknown>>, field: string): number {
+  const item = value[field];
+  return typeof item === "number" && Number.isFinite(item) ? item : 0;
+}
+
+export function prometheusMetric(text: string, name: string): number {
+  let total = 0;
+  let found = false;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("#")) continue;
+    const match = /^(\S+?)(?:\{[^}]*\})?\s+(-?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?)$/iu.exec(
+      line.trim(),
+    );
+    if (match?.[1] !== name || match[2] === undefined) continue;
+    const value = Number(match[2]);
+    if (!Number.isFinite(value)) continue;
+    total += value;
+    found = true;
+  }
+  return found ? total : 0;
 }

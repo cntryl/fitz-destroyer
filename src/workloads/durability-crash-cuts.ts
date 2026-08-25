@@ -13,6 +13,8 @@ export type DurabilityAction = "baseline" | "cut" | "verify";
 export type DurabilityCrashCutOptions = LiveCommonOptions & {
   seed: number;
   action: DurabilityAction;
+  sequence: number;
+  iterations: number;
 };
 
 export async function runDurabilityCrashCut(
@@ -25,7 +27,7 @@ export async function runDurabilityCrashCut(
     return;
   }
 
-  const sequence = options.action === "baseline" ? 0 : 1;
+  const sequence = options.sequence;
   const operations = DURABLE_DOMAINS.map(async (domain) => {
     log("durability_operation_started", { action: options.action, domain, sequence });
     try {
@@ -58,6 +60,9 @@ export function crashCutRoute(domain: DurableDomain, namespace: string, sequence
   if (domain === "schedule") {
     return `schedule://destroyer/${namespace}/crash-cut/job-${sequence.toString().padStart(8, "0")}`;
   }
+  if (domain === "stream" && sequence > 0) {
+    return `stream://destroyer/${namespace}/crash-cut-${sequence.toString().padStart(8, "0")}`;
+  }
   return `${domain}://destroyer/${namespace}/crash-cut`;
 }
 
@@ -87,9 +92,9 @@ async function writeDurableValue(
       throw error;
     }
   } else if (domain === "stream") {
-    const session = await client.stream.begin(crashCutRoute(domain, options.namespace), { signal });
+    const session = await client.stream.begin(crashCutRoute(domain, options.namespace, sequence), { signal });
     try {
-      await session.append({ expectedOffset: BigInt(sequence), body: payload, signal });
+      await session.append({ expectedOffset: 0n, body: payload, signal });
       await session.commit({ mode: "Sync", signal });
     } catch (error) {
       await session.rollback().catch(() => undefined);
@@ -138,7 +143,7 @@ async function verifyDurabilityState(
     signal: operationSignal(options),
   });
   try {
-    for (const sequence of [0, 1]) {
+    for (let sequence = 0; sequence <= options.iterations; sequence += 1) {
       const result = await kvTransaction.get({
         key: kvKey(sequence),
         signal: operationSignal(options),
@@ -156,23 +161,27 @@ async function verifyDurabilityState(
     await kvTransaction.rollback().catch(() => undefined);
   }
 
-  for await (const batch of client.stream.read(crashCutRoute("stream", options.namespace), {
-    fromOffset: 0n,
-    mode: "replay",
-    batchSize: 10,
-    signal: operationSignal(options),
-  })) {
-    for (const record of batch.records) {
-      const sequence = Number(record.offset);
-      if (sequence !== 0 && sequence !== 1) {
-        throw new Error(`Unexpected Stream crash-cut offset ${record.offset}`);
+  for (let sequence = 0; sequence <= options.iterations; sequence += 1) {
+    for await (const batch of client.stream.read(
+      crashCutRoute("stream", options.namespace, sequence),
+      {
+        fromOffset: 0n,
+        mode: "replay",
+        batchSize: 10,
+        signal: operationSignal(options),
+      },
+    )) {
+      for (const record of batch.records) {
+        if (record.offset !== 0n) {
+          throw new Error(`Unexpected Stream crash-cut offset ${record.offset}`);
+        }
+        assertBytesEqual(
+          record.body,
+          crashCutPayload(options, "stream", sequence),
+          `Stream crash-cut ${sequence}`,
+        );
+        observed.stream.push(sequence);
       }
-      assertBytesEqual(
-        record.body,
-        crashCutPayload(options, "stream", sequence),
-        `Stream crash-cut ${sequence}`,
-      );
-      observed.stream.push(sequence);
     }
   }
 
@@ -183,7 +192,7 @@ async function verifyDurabilityState(
     for (const entry of page) {
       const match = /\/job-(\d{8})$/u.exec(entry.route);
       const sequence = match?.[1] === undefined ? Number.NaN : Number(match[1]);
-      if (sequence !== 0 && sequence !== 1) {
+      if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > options.iterations) {
         throw new Error(`Unexpected Schedule crash-cut route ${entry.route}`);
       }
       assertBytesEqual(
@@ -209,7 +218,7 @@ function identifyPayload(
   domain: DurableDomain,
   actual: Uint8Array,
 ): number {
-  for (const sequence of [0, 1]) {
+  for (let sequence = 0; sequence <= options.iterations; sequence += 1) {
     try {
       assertBytesEqual(actual, crashCutPayload(options, domain, sequence), `${domain} payload`);
       return sequence;

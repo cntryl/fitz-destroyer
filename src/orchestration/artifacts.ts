@@ -26,6 +26,10 @@ export class Artifacts {
     await writeFile(join(this.directory, name), content, "utf8");
   }
 
+  async append(name: string, content: string): Promise<void> {
+    await appendFile(join(this.directory, name), content, "utf8");
+  }
+
   async writeJson(name: string, value: unknown): Promise<void> {
     await this.write(name, `${JSON.stringify(value, null, 2)}\n`);
   }

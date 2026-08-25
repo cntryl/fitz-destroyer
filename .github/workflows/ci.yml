@@ -1,0 +1,136 @@
+name: CI
+
+on: workflow_dispatch
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scenarios:
+    name: scenarios (${{ matrix.scenario }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - clean-restart
+          - cache-loss
+          - durability-crash-cuts
+          - queue-redelivery
+          - lease-contention
+          - hot-route-canary
+          - protocol-abuse
+          - notice-fanout
+          - schedule-delivery
+          - session-boundaries
+          - rpc-pressure
+          - rpc-stream-hose
+          - connection-storm
+          - domain-pressure
+          - chaos
+          - soak
+          - storage-faults
+          - queue-lifecycle
+          - schedule-outage
+          - transaction-contention
+          - stream-replay
+          - live-churn
+    steps:
+      - name: Check out Fitz Destroyer
+        uses: actions/checkout@v7
+        with:
+          path: fitz-destroyer
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: fitz-destroyer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: fitz-destroyer
+
+      - name: Run smoke scenario
+        env:
+          FITZ_IMAGE: ghcr.io/cntryl/fitz:latest
+        run: >-
+          npm run destroy -- "${{ matrix.scenario }}" --scale smoke
+          --duration-ms 480000
+        working-directory: fitz-destroyer
+
+      - name: Upload scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scenario-${{ matrix.scenario }}-${{ github.run_attempt }}
+          path: fitz-destroyer/artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+  analysis:
+    name: analysis
+    if: always()
+    needs: scenarios
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out Fitz Destroyer
+        uses: actions/checkout@v7
+        with:
+          path: fitz-destroyer
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: fitz-destroyer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: fitz-destroyer
+
+      - name: Run repository checks
+        id: checks
+        continue-on-error: true
+        run: npm run check
+        working-directory: fitz-destroyer
+
+      - name: Download scenario evidence
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: scenario-*-${{ github.run_attempt }}
+          path: scenario-artifacts
+          merge-multiple: true
+
+      - name: Build final report
+        env:
+          ANALYSIS_RESULT: ${{ steps.checks.outcome }}
+          MATRIX_RESULT: ${{ needs.scenarios.result }}
+        run: >-
+          npm run report --
+          --artifacts-dir "${{ github.workspace }}/scenario-artifacts"
+          --output-dir "${{ github.workspace }}/ci-report"
+          --analysis-result "$ANALYSIS_RESULT"
+          --matrix-result "$MATRIX_RESULT"
+        working-directory: fitz-destroyer
+
+      - name: Upload final report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fitz-destroyer-report-${{ github.run_attempt }}
+          path: ci-report/
+          if-no-files-found: error
+          retention-days: 30

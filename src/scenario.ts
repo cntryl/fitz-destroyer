@@ -12,11 +12,40 @@ import {
 import { runRpcStreamHose } from "./orchestration/rpc-stream-hose.js";
 import { runScheduleDelivery } from "./orchestration/schedule-delivery.js";
 import { runSessionBoundariesScenario } from "./orchestration/session-boundaries.js";
+import { runPressureScenario } from "./orchestration/pressure.js";
+import { runStorageFaultsScenario } from "./orchestration/storage-faults.js";
+import { runQueueLifecycleScenario } from "./orchestration/queue-lifecycle.js";
+import { runTransactionContentionScenario } from "./orchestration/transaction-contention.js";
+import { runStreamReplayScenario } from "./orchestration/stream-replay.js";
+import { runScheduleOutageScenario } from "./orchestration/schedule-outage.js";
+import { runLiveChurnScenario } from "./orchestration/live-churn.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
 
-export async function runScenario(config: RunConfig, scenario: ConcreteScenario): Promise<void> {
+export type FailureClassification = "setup" | "workload" | "assertion" | "timeout" | "cleanup";
+export type CleanupState = "removed" | "preserved" | "failed";
+export type ScenarioResult = {
+  scenario: ConcreteScenario;
+  verdict: "passed" | "failed";
+  durationMs: number;
+  artifactPath: string;
+  failureClassification: FailureClassification | null;
+  cleanupState: CleanupState;
+  runId: string;
+  project: string;
+  error?: string;
+  cleanupError?: string;
+  cleanupCommand?: string;
+};
+
+type ScenarioRunOptions = { preserveFailure?: boolean };
+
+export async function runScenario(
+  config: RunConfig,
+  scenario: ConcreteScenario,
+  options: ScenarioRunOptions = {},
+): Promise<ScenarioResult> {
   const runId = createRunId(scenario);
   const namespace = routeSegment(runId);
   const project = `fitz-destroyer-${namespace}`.slice(0, 63).replace(/-$/, "");
@@ -30,7 +59,12 @@ export async function runScenario(config: RunConfig, scenario: ConcreteScenario)
     payloadBytes: config.payloadBytes,
   };
   const startedAt = performance.now();
-  let passed = false;
+  let verdict: ScenarioResult["verdict"] = "failed";
+  let failureClassification: FailureClassification | null = null;
+  let failureMessage: string | undefined;
+  let cleanupError: string | undefined;
+  let cleanupState: CleanupState = "preserved";
+  let phase: "setup" | "workload" = "setup";
 
   await artifacts.event("scenario_started", {
     scenario,
@@ -51,21 +85,22 @@ export async function runScenario(config: RunConfig, scenario: ConcreteScenario)
       rpcStreamFrameBytes: config.rpcStreamFrameBytes,
       rpcStreamReaderDelayMs: config.rpcStreamReaderDelayMs,
       clientProfile: config.clientProfile,
-      reuseImages: config.reuseImages,
+      durationMs: config.durationMs,
+      sampleMs: config.sampleMs,
+      iterations: config.iterations,
       port: config.port,
-      fitzSourceDir: config.fitzSourceDir,
+      ...(config.fitzImage === undefined
+        ? { fitzSourceDir: config.fitzSourceDir }
+        : { fitzImage: config.fitzImage }),
     },
   });
 
   try {
     await stack.preflight();
     await stack.reset();
-    if (config.reuseImages) {
-      await artifacts.event("build_skipped", { reason: "reuse-images" });
-    } else {
-      await stack.build();
-    }
+    await stack.build();
     await stack.startCore();
+    phase = "workload";
 
     if (scenario === "clean-restart") {
       await stack.runRecoveryJob("load", shape);
@@ -114,38 +149,85 @@ export async function runScenario(config: RunConfig, scenario: ConcreteScenario)
     } else if (scenario === "connection-storm") {
       await stack.runConnectionStorm(shape);
       await stack.stopFitz();
-    } else if (scenario === "domain-pressure") {
-      await stack.runDomainPressure(config.clientReplicas, config.phaseMs);
+    } else if (scenario === "domain-pressure" || scenario === "soak") {
+      await runPressureScenario(stack, config, shape, artifacts, scenario);
       await stack.stopFitz();
-    } else {
+    } else if (scenario === "storage-faults") {
+      await runStorageFaultsScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "queue-lifecycle") {
+      await runQueueLifecycleScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "transaction-contention") {
+      await runTransactionContentionScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "stream-replay") {
+      await runStreamReplayScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "schedule-outage") {
+      await runScheduleOutageScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "live-churn") {
+      await runLiveChurnScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "chaos") {
       await runChaos(stack, config);
+    } else {
+      throw new Error(`Scenario ${scenario} is not implemented`);
     }
-    passed = true;
+    verdict = "passed";
   } catch (error) {
-    await artifacts.event("scenario_failed", { error: errorMessage(error) });
-    throw error;
+    failureMessage = errorMessage(error);
+    failureClassification = classifyFailure(error, phase);
+    await artifacts.event("scenario_failed", {
+      error: failureMessage,
+      failureClassification,
+    });
   } finally {
     await stack.collect().catch(async (error: unknown) => {
-      await artifacts.event("artifact_collection_failed", { error: errorMessage(error) });
+      const message = errorMessage(error);
+      await artifacts.event("artifact_collection_failed", { error: message });
+      if (verdict === "passed") {
+        verdict = "failed";
+        failureMessage = message;
+        failureClassification = "setup";
+      }
     });
-    if (passed && !config.keep) {
-      await stack.cleanup();
+    const shouldCleanup = verdict === "passed" ? !config.keep : options.preserveFailure === false;
+    if (shouldCleanup) {
+      try {
+        await stack.cleanup();
+        cleanupState = "removed";
+      } catch (error) {
+        cleanupError = errorMessage(error);
+        cleanupState = "failed";
+        await artifacts.event("cleanup_failed", { error: cleanupError, project });
+        if (verdict === "passed") {
+          verdict = "failed";
+          failureMessage = cleanupError;
+          failureClassification = "cleanup";
+        }
+      }
     }
-    const summary = {
+    const summary: ScenarioResult = {
       scenario,
       runId,
       project,
-      passed,
-      kept: config.keep || !passed,
-      elapsedMs: Math.round(performance.now() - startedAt),
-      artifacts: artifacts.directory,
-      cleanupCommand: config.keep || !passed ? stack.cleanupCommand() : undefined,
+      verdict,
+      durationMs: Math.round(performance.now() - startedAt),
+      artifactPath: artifacts.directory,
+      failureClassification,
+      cleanupState,
+      ...(failureMessage === undefined ? {} : { error: failureMessage }),
+      ...(cleanupError === undefined ? {} : { cleanupError }),
+      ...(cleanupState === "removed" ? {} : { cleanupCommand: stack.cleanupCommand() }),
     };
     await artifacts.writeJson("summary.json", summary);
     await artifacts.event("scenario_complete", summary);
-    if (!passed || config.keep) {
+    if (cleanupState !== "removed") {
       process.stderr.write(`Stack preserved. Cleanup when finished:\n${stack.cleanupCommand()}\n`);
     }
+    return summary;
   }
 }
 
@@ -189,6 +271,27 @@ function routeSegment(value: string): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
+
+export function classifyFailure(
+  error: unknown,
+  phase: "setup" | "workload" = "workload",
+): FailureClassification {
+  if (phase === "setup") return "setup";
+  const name = error instanceof Error ? error.name : "";
+  const message = errorMessage(error);
+  if (name === "TimeoutError" || /\b(?:timed? out|timeout|deadline)\b/iu.test(message)) {
+    return "timeout";
+  }
+  if (
+    name === "AssertionError" ||
+    /\b(?:expected|unexpected|missing|mismatch|duplicate|disappeared|observed|omitted|did not|does not|quiesce|reused)\b/iu.test(
+      message,
+    )
+  ) {
+    return "assertion";
+  }
+  return "workload";
 }
 
 function sleep(milliseconds: number): Promise<void> {

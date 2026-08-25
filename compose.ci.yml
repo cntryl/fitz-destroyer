@@ -1,4 +1,4 @@
-# Local-only Fitz recovery harness. The host runner owns lifecycle and cleanup.
+# CI Fitz recovery harness. The host runner owns lifecycle and cleanup.
 services:
   sqrzl:
     image: "${SQRZL_IMAGE:-ghcr.io/sqrzl/sqrzl-emulator:latest}"
@@ -27,9 +27,7 @@ services:
       - "127.0.0.1::9100"
 
   fitz:
-    build:
-      context: "${FITZ_SOURCE_DIR:-../fitz}"
-      dockerfile: Dockerfile
+    image: "${FITZ_IMAGE:-ghcr.io/cntryl/fitz:latest}"
     restart: "no"
     stop_grace_period: 15s
     healthcheck:

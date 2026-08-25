@@ -43,8 +43,9 @@ export async function runQueueRedelivery(
   }
 
   const seen = new Set<number>();
-  let emptyPolls = 0;
-  while (emptyPolls < 3) {
+  const drainIdleDeadlineMs = 20_000;
+  let idleSinceMs: number | undefined;
+  while (idleSinceMs === undefined || performance.now() - idleSinceMs < drainIdleDeadlineMs) {
     const items = await client.queue.reserve(route, {
       leaseSeconds: 30,
       batchSize: 1_024,
@@ -52,10 +53,10 @@ export async function runQueueRedelivery(
       signal: operationSignal(options),
     });
     if (items.length === 0) {
-      emptyPolls += 1;
+      idleSinceMs ??= performance.now();
       continue;
     }
-    emptyPolls = 0;
+    idleSinceMs = undefined;
     for (const item of items) {
       const sequence = verifyQueueItem(options, item.body);
       if (seen.has(sequence)) throw new Error(`Queue drainer received duplicate sequence ${sequence}`);

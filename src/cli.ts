@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { parseArgs, usage, type ScenarioName } from "./config.js";
-import { runScenario, type ConcreteScenario } from "./scenario.js";
+import { parseArgs, usage } from "./config.js";
+import { runScenario } from "./scenario.js";
+import { runSuite } from "./suite.js";
 
 await main().catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
@@ -14,29 +15,11 @@ async function main(): Promise<void> {
     return;
   }
   const config = parseArgs(process.argv.slice(2));
-  for (const scenario of expandScenarios(config.scenario)) {
-    await runScenario(config, scenario);
+  if (config.scenario === "all") {
+    const summary = await runSuite(config, runScenario);
+    if (summary.totals.failed > 0) process.exitCode = 1;
+    return;
   }
-}
-
-function expandScenarios(scenario: ScenarioName): readonly ConcreteScenario[] {
-  return scenario === "all"
-    ? [
-        "clean-restart",
-        "cache-loss",
-        "durability-crash-cuts",
-        "queue-redelivery",
-        "lease-contention",
-        "hot-route-canary",
-        "protocol-abuse",
-        "notice-fanout",
-        "schedule-delivery",
-        "session-boundaries",
-        "rpc-pressure",
-        "rpc-stream-hose",
-        "connection-storm",
-        "domain-pressure",
-        "chaos",
-      ]
-    : [scenario];
+  const result = await runScenario(config, config.scenario);
+  if (result.verdict === "failed") process.exitCode = 1;
 }

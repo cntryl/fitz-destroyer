@@ -36,6 +36,33 @@ import {
 } from "./workloads/queue-redelivery.js";
 import { allCanaryDomains, runCanary } from "./workloads/canary.js";
 import { runProtocolAbuse } from "./workloads/protocol-abuse.js";
+import {
+  isAmbiguousDurableError,
+  recordStageError,
+  recordStageLatency,
+  stageMetrics,
+  type PressureStages,
+} from "./pressure.js";
+import {
+  decodePressureQueueSequence,
+  runPressureQueueReconciler,
+} from "./workloads/pressure.js";
+import {
+  runQueueLifecycle,
+  type QueueLifecycleAction,
+} from "./workloads/queue-lifecycle.js";
+import {
+  runTransactionContention,
+  type TransactionContentionAction,
+} from "./workloads/transaction-contention.js";
+import {
+  runStreamReplay,
+  type StreamReplayAction,
+} from "./workloads/stream-replay.js";
+import {
+  runScheduleOutage,
+  type ScheduleOutageAction,
+} from "./workloads/schedule-outage.js";
 
 type WorkerMode =
   | "load"
@@ -60,7 +87,19 @@ type WorkerMode =
   | "rpc-caller"
   | "rpc-worker"
   | "rpc-stream-caller"
-  | "rpc-stream-worker";
+  | "rpc-stream-worker"
+  | "pressure-reconciler"
+  | "queue-lifecycle-producer"
+  | "queue-lifecycle-abandoner"
+  | "queue-lifecycle-consumer"
+  | "transaction-contender"
+  | "transaction-holder"
+  | "transaction-verifier"
+  | "stream-replay-worker"
+  | "schedule-outage-producer"
+  | "schedule-outage-canceller"
+  | "schedule-outage-cleanup"
+  | "schedule-outage-subscriber";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -185,6 +224,7 @@ async function runLiveRole(
     liveMode === "rpc-worker" ||
     liveMode === "rpc-stream-worker" ||
     liveMode === "schedule-subscriber" ||
+    liveMode === "schedule-outage-subscriber" ||
     liveMode === "session-boundaries"
       ? shutdown.signal
       : AbortSignal.any([shutdown.signal, AbortSignal.timeout(jobTimeoutMs)]);
@@ -217,6 +257,8 @@ async function runLiveRole(
       {
         ...options,
         seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+        sequence: nonNegativeEnv("DESTROYER_DURABILITY_SEQUENCE", 0),
+        iterations: nonNegativeEnv("DESTROYER_DURABILITY_ITERATIONS", 1),
         action:
           liveMode === "durability-verifier"
             ? "verify"
@@ -237,6 +279,50 @@ async function runLiveRole(
         participant: routeSegment(
           process.env.DESTROYER_LEASE_PARTICIPANT ?? `${liveMode}-${options.workerId}`,
         ),
+      },
+      log,
+    );
+  } else if (liveMode === "stream-replay-worker") {
+    await runStreamReplay(
+      client,
+      {
+        ...options,
+        seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+        action: streamReplayAction(process.env.DESTROYER_STREAM_REPLAY_ACTION),
+        commitAtMs: positiveEnv("DESTROYER_STREAM_REPLAY_COMMIT_AT_MS", 1),
+      },
+      log,
+    );
+  } else if (
+    liveMode === "schedule-outage-producer" ||
+    liveMode === "schedule-outage-canceller" ||
+    liveMode === "schedule-outage-cleanup" ||
+    liveMode === "schedule-outage-subscriber"
+  ) {
+    await runScheduleOutage(
+      client,
+      {
+        ...options,
+        seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+        action: scheduleOutageAction(process.env.DESTROYER_SCHEDULE_OUTAGE_ACTION),
+        missedAtMs: positiveEnv("DESTROYER_SCHEDULE_OUTAGE_MISSED_AT_MS", 1),
+        raceAtMs: positiveEnv("DESTROYER_SCHEDULE_OUTAGE_RACE_AT_MS", 1),
+        handlerBacklog: () => ({ ...clientAsyncHandlerBacklog }),
+      },
+      log,
+    );
+  } else if (
+    liveMode === "transaction-contender" ||
+    liveMode === "transaction-holder" ||
+    liveMode === "transaction-verifier"
+  ) {
+    await runTransactionContention(
+      client,
+      {
+        ...options,
+        seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+        action: transactionContentionAction(process.env.DESTROYER_TRANSACTION_ACTION),
+        commitAtMs: positiveEnv("DESTROYER_TRANSACTION_COMMIT_AT_MS", 1),
       },
       log,
     );
@@ -308,6 +394,31 @@ async function runLiveRole(
       },
       log,
     );
+  } else if (liveMode === "pressure-reconciler") {
+    await runPressureQueueReconciler(
+      client,
+      {
+        namespace: options.namespace,
+        workers: requiredEnv("DESTROYER_PRESSURE_WORKERS").split(","),
+        requestTimeoutMs,
+        signal,
+      },
+      log,
+    );
+  } else if (
+    liveMode === "queue-lifecycle-producer" ||
+    liveMode === "queue-lifecycle-abandoner" ||
+    liveMode === "queue-lifecycle-consumer"
+  ) {
+    await runQueueLifecycle(
+      client,
+      {
+        ...options,
+        seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+        action: queueLifecycleAction(process.env.DESTROYER_QUEUE_LIFECYCLE_ACTION),
+      },
+      log,
+    );
   } else {
     const scheduleOptions = {
       ...options,
@@ -336,6 +447,14 @@ async function bombard(client: Client): Promise<void> {
   const selectedDomains = parseDomainSelection(process.env.DESTROYER_DOMAINS);
   const counters = emptyCounters();
   let window = emptyCounters();
+  const stages: PressureStages = {};
+  const queueOutcome = {
+    acknowledged: [] as number[],
+    ambiguousEnqueues: [] as number[],
+    failedEnqueues: [] as number[],
+    completed: [] as number[],
+    ambiguousCompletions: [] as number[],
+  };
   const lastErrors: Partial<Record<Domain, string>> = {};
   const payload = (domain: Domain, counter: number): Uint8Array =>
     new TextEncoder().encode(`${namespace}:${worker}:${domain}:${counter.toString().padStart(12, "0")}`);
@@ -357,6 +476,7 @@ async function bombard(client: Client): Promise<void> {
       connected: client.isConnected(),
       totals: counters,
       window: interval,
+      stages,
       lastErrors,
     });
   }, positiveEnv("DESTROYER_PROGRESS_INTERVAL_MS", 1_000));
@@ -364,65 +484,94 @@ async function bombard(client: Client): Promise<void> {
   const operations: Record<Domain, (counter: number, signal: AbortSignal) => Promise<void>> = {
     queue: async (i, signal) => {
       const route = `queue://destroyer/${namespace}/${worker}`;
-      await client.queue.enqueue(route, { body: payload("queue", i), signal });
-      const items = await client.queue.reserve(route, { leaseSeconds: 30, batchSize: 1, signal });
-      if (items.length > 0) await items[0]?.complete({ signal });
+      try {
+        await observeStage(stages, "queue", "enqueue", () =>
+          client.queue.enqueue(route, { body: payload("queue", i), signal }), true);
+        queueOutcome.acknowledged.push(i);
+      } catch (error) {
+        if (isAmbiguousDurableError(error)) queueOutcome.ambiguousEnqueues.push(i);
+        else queueOutcome.failedEnqueues.push(i);
+        throw error;
+      }
+      const items = await observeStage(stages, "queue", "reserve", () =>
+        client.queue.reserve(route, { leaseSeconds: 2, batchSize: 1, signal }), true);
+      const item = items[0];
+      if (item !== undefined) {
+        const sequence = decodePressureQueueSequence(namespace, worker, item.body);
+        try {
+          await observeStage(stages, "queue", "complete", () => item.complete({ signal }), true);
+          queueOutcome.completed.push(sequence);
+        } catch (error) {
+          if (isAmbiguousDurableError(error)) queueOutcome.ambiguousCompletions.push(sequence);
+          throw error;
+        }
+      }
     },
     kv: async (i, signal) => {
       const route = `kv://destroyer/${namespace}/${worker}`;
-      const tx = await client.kv.begin(route, { durability: "Sync", signal });
-      try {
-        await tx.put({ key: payload("kv", i), value: payload("kv", i + 1), signal });
-        await tx.commit({ signal });
-      } catch (error) {
-        await tx.rollback({ signal }).catch(() => undefined);
-        throw error;
-      }
+      await observeStage(stages, "kv", "transaction", async () => {
+        const tx = await client.kv.begin(route, { durability: "Sync", signal });
+        try {
+          await tx.put({ key: payload("kv", i), value: payload("kv", i + 1), signal });
+          await tx.commit({ signal });
+        } catch (error) {
+          await tx.rollback({ signal }).catch(() => undefined);
+          throw error;
+        }
+      }, true);
     },
     stream: async (i, signal) => {
       const route = `stream://destroyer/${namespace}/${worker}-s-${i}`;
-      const session = await client.stream.begin(route, { signal });
-      try {
-        await session.append({ expectedOffset: 0n, body: payload("stream", i), signal });
-        await session.commit({ mode: "Sync", signal });
-      } catch (error) {
-        await session.rollback({ signal }).catch(() => undefined);
-        throw error;
-      }
+      await observeStage(stages, "stream", "append", async () => {
+        const session = await client.stream.begin(route, { signal });
+        try {
+          await session.append({ expectedOffset: 0n, body: payload("stream", i), signal });
+          await session.commit({ mode: "Sync", signal });
+        } catch (error) {
+          await session.rollback({ signal }).catch(() => undefined);
+          throw error;
+        }
+      }, true);
     },
     schedule: async (i, signal) => {
       const route = `schedule://destroyer/${namespace}/${worker}/job-${i}`;
-      await client.schedule.create(route, {
-        cron: "0 0 1 1 *",
-        deliveryMode: "Single",
-        payload: payload("schedule", i),
-        signal,
-      });
+      await observeStage(stages, "schedule", "create", () =>
+        client.schedule.create(route, {
+          cron: "0 0 1 1 *",
+          deliveryMode: "Single",
+          payload: payload("schedule", i),
+          signal,
+        }), true);
     },
     notice: async (i, signal) => {
-      await client.notice.publish(`notice://destroyer/${namespace}/${worker}`, {
-        body: payload("notice", i),
-        signal,
-      });
+      await observeStage(stages, "notice", "publish", () =>
+        client.notice.publish(`notice://destroyer/${namespace}/${worker}`, {
+          body: payload("notice", i),
+          signal,
+        }));
     },
     lease: async (_i, signal) => {
-      const lease = await client.lease.acquire(`lease://destroyer/${namespace}/${worker}`, {
-        ttlSeconds: 5,
-        waitSeconds: 0,
-        signal,
+      await observeStage(stages, "lease", "acquire-release", async () => {
+        const lease = await client.lease.acquire(`lease://destroyer/${namespace}/${worker}`, {
+          ttlSeconds: 5,
+          waitSeconds: 0,
+          signal,
+        });
+        await lease.release({ signal });
       });
-      await lease.release({ signal });
     },
     rpc: async (i, signal) => {
-      let responses = 0;
-      for await (const response of client.rpc.call(rpcRoute, {
-        body: payload("rpc", i),
-        timeoutMs: requestTimeoutMs,
-        signal,
-      })) {
-        if (response.body.length > 0) responses += 1;
-      }
-      if (responses !== 1) throw new Error(`expected one RPC response, received ${responses}`);
+      await observeStage(stages, "rpc", "call", async () => {
+        let responses = 0;
+        for await (const response of client.rpc.call(rpcRoute, {
+          body: payload("rpc", i),
+          timeoutMs: requestTimeoutMs,
+          signal,
+        })) {
+          if (response.body.length > 0) responses += 1;
+        }
+        if (responses !== 1) throw new Error(`expected one RPC response, received ${responses}`);
+      });
     },
   };
   const loops = selectedDomains.map((domain) =>
@@ -441,7 +590,29 @@ async function bombard(client: Client): Promise<void> {
   } finally {
     clearInterval(progressTimer);
     if (rpcWorker !== undefined) await rpcWorker.unsubscribe().catch(() => undefined);
-    log("stopped", { worker, totals: counters });
+    log("stopped", { worker, totals: counters, stages, queueOutcome });
+  }
+}
+
+async function observeStage<T>(
+  stages: PressureStages,
+  domain: Domain,
+  stage: string,
+  operation: () => Promise<T>,
+  durableOutcomeCanBeAmbiguous = false,
+): Promise<T> {
+  const metrics = stageMetrics(stages, domain, stage);
+  const startedAt = performance.now();
+  metrics.started += 1;
+  try {
+    const result = await operation();
+    metrics.succeeded += 1;
+    return result;
+  } catch (error) {
+    recordStageError(metrics, error, durableOutcomeCanBeAmbiguous && isAmbiguousDurableError(error));
+    throw error;
+  } finally {
+    recordStageLatency(metrics, performance.now() - startedAt);
   }
 }
 
@@ -512,6 +683,18 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "rpc-worker" ||
     value === "rpc-stream-caller" ||
     value === "rpc-stream-worker"
+    || value === "pressure-reconciler" ||
+    value === "queue-lifecycle-producer" ||
+    value === "queue-lifecycle-abandoner" ||
+    value === "queue-lifecycle-consumer"
+    || value === "transaction-contender" ||
+    value === "transaction-holder" ||
+    value === "transaction-verifier" ||
+    value === "stream-replay-worker"
+    || value === "schedule-outage-producer" ||
+    value === "schedule-outage-canceller" ||
+    value === "schedule-outage-cleanup" ||
+    value === "schedule-outage-subscriber"
   ) {
     return value;
   }
@@ -534,6 +717,32 @@ function queueRedeliveryAction(value: string | undefined): QueueRedeliveryAction
   const action = value ?? "drain";
   if (action === "produce" || action === "victim" || action === "drain") return action;
   throw new Error(`DESTROYER_QUEUE_REDELIVERY_ACTION is invalid; received ${action}`);
+}
+
+function queueLifecycleAction(value: string | undefined): QueueLifecycleAction {
+  const action = value ?? "consume";
+  if (action === "produce" || action === "abandon" || action === "consume") return action;
+  throw new Error(`DESTROYER_QUEUE_LIFECYCLE_ACTION is invalid; received ${action}`);
+}
+
+function transactionContentionAction(value: string | undefined): TransactionContentionAction {
+  const action = value ?? "contend";
+  if (action === "prepare" || action === "contend" || action === "hold" || action === "verify") return action;
+  throw new Error(`DESTROYER_TRANSACTION_ACTION is invalid; received ${action}`);
+}
+
+function streamReplayAction(value: string | undefined): StreamReplayAction {
+  const action = value ?? "verify";
+  if (action === "contend" || action === "verify") return action;
+  throw new Error(`DESTROYER_STREAM_REPLAY_ACTION is invalid; received ${action}`);
+}
+
+function scheduleOutageAction(value: string | undefined): ScheduleOutageAction {
+  const action = value ?? "create";
+  if (action === "create" || action === "race-cancel" || action === "cleanup" || action === "subscribe") {
+    return action;
+  }
+  throw new Error(`DESTROYER_SCHEDULE_OUTAGE_ACTION is invalid; received ${action}`);
 }
 
 function scheduleProducerAction(value: string | undefined): ScheduleProducerAction {

@@ -56,15 +56,15 @@ async function sendAttack(
   const socket = new WebSocket(url);
   socket.binaryType = "arraybuffer";
   await waitForOpen(socket, signal);
-  let closedByBroker = false;
-  socket.addEventListener("close", () => {
-    closedByBroker = true;
-  });
   for (const frame of attack.frames) socket.send(frame);
   await sleepWithSignal(25, signal);
-  if (socket.readyState === WebSocket.OPEN) socket.close(1000, "destroyer attack complete");
+  let clientClosed = false;
+  if (socket.readyState === WebSocket.OPEN) {
+    clientClosed = true;
+    socket.close(1000, "destroyer attack complete");
+  }
   await waitForClose(socket, signal);
-  return closedByBroker ? "closed" : "client-closed";
+  return clientClosed ? "client-closed" : "closed";
 }
 
 function waitForOpen(socket: WebSocket, signal: AbortSignal): Promise<void> {
