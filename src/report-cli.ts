@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { ScenarioResult } from "./scenario.js";
-import { buildDestroyerReport, renderDestroyerReport } from "./report.js";
+import { dirname, join } from "node:path";
+import { analyzeScenarioArtifacts } from "./report-analysis.js";
+import {
+  type AnalyzedScenarioResult,
+  buildDestroyerReport,
+  renderDestroyerReport,
+  type DestroyerReportRunInput,
+} from "./report.js";
 import { ALL_SCENARIOS } from "./suite.js";
 
 await main().catch((error: unknown) => {
@@ -19,6 +24,8 @@ async function main(): Promise<void> {
     summaries,
     options.analysisResult,
     options.matrixResult,
+    undefined,
+    githubRun(process.env),
   );
   const markdown = renderDestroyerReport(report);
   await mkdir(options.outputDir, { recursive: true });
@@ -56,16 +63,21 @@ function parseOptions(args: readonly string[]): Options {
   };
 }
 
-async function loadScenarioResults(directory: string): Promise<ScenarioResult[]> {
+async function loadScenarioResults(directory: string): Promise<AnalyzedScenarioResult[]> {
   const paths = await findSummaries(directory).catch((error: unknown) => {
     if (isMissingDirectory(error)) return [];
     throw error;
   });
-  const results: ScenarioResult[] = [];
+  const results: AnalyzedScenarioResult[] = [];
   for (const path of paths) {
     try {
       const value: unknown = JSON.parse(await readFile(path, "utf8"));
-      if (isScenarioResult(value)) results.push(value);
+      if (isScenarioResult(value)) {
+        results.push({
+          ...value,
+          reportAnalysis: await analyzeScenarioArtifacts(dirname(path), value.verdict),
+        });
+      }
     } catch (error) {
       process.stderr.write(
         `Ignoring unreadable scenario summary ${path}: ${error instanceof Error ? error.message : String(error)}\n`,
@@ -85,7 +97,7 @@ async function findSummaries(directory: string): Promise<string[]> {
   return paths.sort();
 }
 
-function isScenarioResult(value: unknown): value is ScenarioResult {
+function isScenarioResult(value: unknown): value is AnalyzedScenarioResult {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const record = value as Readonly<Record<string, unknown>>;
   return typeof record.scenario === "string" &&
@@ -99,4 +111,28 @@ function isScenarioResult(value: unknown): value is ScenarioResult {
 
 function isMissingDirectory(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+function githubRun(environment: NodeJS.ProcessEnv): DestroyerReportRunInput {
+  const serverUrl = environment.GITHUB_SERVER_URL;
+  const repository = environment.GITHUB_REPOSITORY;
+  const runId = environment.GITHUB_RUN_ID;
+  return {
+    ...optional("repository", repository),
+    ...optional("commitSha", environment.GITHUB_SHA),
+    ...optional("refName", environment.GITHUB_REF_NAME),
+    ...optional("attempt", environment.GITHUB_RUN_ATTEMPT),
+    ...(serverUrl === undefined || repository === undefined || runId === undefined
+      ? {}
+      : { url: `${serverUrl}/${repository}/actions/runs/${runId}` }),
+  };
+}
+
+function optional<Key extends keyof DestroyerReportRunInput>(
+  key: Key,
+  value: string | undefined,
+): Pick<DestroyerReportRunInput, Key> | Record<never, never> {
+  return value === undefined || value.trim() === ""
+    ? {}
+    : { [key]: value } as Pick<DestroyerReportRunInput, Key>;
 }

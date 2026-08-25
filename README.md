@@ -287,7 +287,14 @@ can be tested before publication.
 After the complete matrix finishes, the `analysis` job downloads all scenario
 evidence, runs `npm run check`, and turns the structured scenario summaries into
 the workflow's final Markdown and JSON report. The report is shown in the job
-summary and retained as the `fitz-destroyer-report-*` artifact. The Destroyer
+summary and retained as the `fitz-destroyer-report-*` artifact. It identifies
+the exact workflow run, ref, commit, and evidence artifact for each scenario;
+groups failures by classification; retains bounded expandable diagnostics; and
+reports cleanup and diagnostic timing context. For failed scenarios, analysis
+also normalizes recurring Fitz actor-stop, connection-loss, storage-disappearance,
+Queue reply-timeout, and KV inventory-warning evidence without claiming that an
+observed signal is the root cause. Structured soak warnings remain diagnostic
+and do not change the correctness verdict. The Destroyer
 workflow bounds the image build at 5 minutes, parallel scenario jobs at 15
 minutes, and final analysis at 5 minutes. Its soak matrix entry runs for 8
 minutes, keeping the intended wall-clock budget at 25 minutes. Local soak runs

@@ -163,7 +163,7 @@ jobs:
           path: scenario-artifacts
           merge-multiple: true
 
-      - name: Build final report
+      - name: Build final report and enforce verdict
         env:
           ANALYSIS_RESULT: ${{ steps.checks.outcome }}
           MATRIX_RESULT: ${{ needs.scenarios.result }}
