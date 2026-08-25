@@ -2,8 +2,16 @@ import { randomBytes } from "node:crypto";
 import type { RunConfig, ScenarioName } from "./config.js";
 import { Artifacts } from "./orchestration/artifacts.js";
 import { ComposeStack } from "./orchestration/compose.js";
+import { runDurabilityCrashCutsScenario } from "./orchestration/durability-crash-cuts.js";
+import { runLeaseContentionScenario } from "./orchestration/lease-contention.js";
+import { runQueueRedeliveryScenario } from "./orchestration/queue-redelivery.js";
+import {
+  runHotRouteCanaryScenario,
+  runProtocolAbuseScenario,
+} from "./orchestration/interference.js";
 import { runRpcStreamHose } from "./orchestration/rpc-stream-hose.js";
 import { runScheduleDelivery } from "./orchestration/schedule-delivery.js";
+import { runSessionBoundariesScenario } from "./orchestration/session-boundaries.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -42,6 +50,7 @@ export async function runScenario(config: RunConfig, scenario: ConcreteScenario)
       rpcStreamFrames: config.rpcStreamFrames,
       rpcStreamFrameBytes: config.rpcStreamFrameBytes,
       rpcStreamReaderDelayMs: config.rpcStreamReaderDelayMs,
+      clientProfile: config.clientProfile,
       reuseImages: config.reuseImages,
       port: config.port,
       fitzSourceDir: config.fitzSourceDir,
@@ -72,11 +81,29 @@ export async function runScenario(config: RunConfig, scenario: ConcreteScenario)
       await stack.gracefulRestartFitz();
       await stack.runRecoveryJob("verify", shape);
       await stack.stopFitz();
+    } else if (scenario === "durability-crash-cuts") {
+      await runDurabilityCrashCutsScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
     } else if (scenario === "notice-fanout") {
       await stack.runNoticeFanout(shape);
       await stack.stopFitz();
+    } else if (scenario === "queue-redelivery") {
+      await runQueueRedeliveryScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "lease-contention") {
+      await runLeaseContentionScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "hot-route-canary") {
+      await runHotRouteCanaryScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "protocol-abuse") {
+      await runProtocolAbuseScenario(stack, config, shape, artifacts);
+      await stack.stopFitz();
     } else if (scenario === "schedule-delivery") {
       await runScheduleDelivery(stack, config, shape, artifacts);
+      await stack.stopFitz();
+    } else if (scenario === "session-boundaries") {
+      await runSessionBoundariesScenario(stack, config, shape, artifacts);
       await stack.stopFitz();
     } else if (scenario === "rpc-pressure") {
       await stack.runRpcPressure(shape);

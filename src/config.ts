@@ -8,12 +8,19 @@ export type ScenarioName =
   | "chaos"
   | "notice-fanout"
   | "schedule-delivery"
+  | "session-boundaries"
+  | "queue-redelivery"
+  | "lease-contention"
+  | "hot-route-canary"
+  | "protocol-abuse"
   | "rpc-pressure"
   | "rpc-stream-hose"
   | "connection-storm"
   | "domain-pressure"
+  | "durability-crash-cuts"
   | "all";
 export type ScaleName = "smoke" | "standard" | "large";
+export type ClientProfile = "end-to-end" | "broker-isolation";
 
 export const RPC_STREAM_MAX_FRAME_BYTES = 65_506;
 
@@ -80,11 +87,12 @@ export type RunConfig = Scale & {
   keep: boolean;
   reuseImages: boolean;
   bombardDomains: readonly Domain[];
+  clientProfile: ClientProfile;
   rootDir: string;
   fitzSourceDir: string;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|schedule-delivery|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -99,6 +107,7 @@ const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|sche
   --handler-delay-ms <n>          Live consumer/worker delay (scale default)
   --schedule-lead-ms <n>          Minimum lead before the due minute (scale default)
   --domains <list>                Bombard domains (default: all seven)
+  --client-profile <name>         end-to-end or broker-isolation (default: end-to-end)
   --rpc-stream-calls <n>          Streaming RPC calls per caller (scale default)
   --rpc-stream-frames <n>         Response frames per streaming call (scale default)
   --rpc-stream-frame-bytes <n>    Bytes per streaming response frame (scale default)
@@ -157,6 +166,7 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
     "--handler-delay-ms",
     "--schedule-lead-ms",
     "--domains",
+    "--client-profile",
     "--rpc-stream-calls",
     "--rpc-stream-frames",
     "--rpc-stream-frame-bytes",
@@ -169,6 +179,8 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
   const scaleValue = values.get("--scale") ?? "smoke";
   if (!isScaleName(scaleValue)) throw new Error(`Invalid scale: ${scaleValue}`);
   const preset = SCALE_PRESETS[scaleValue];
+  const clientProfile = values.get("--client-profile") ?? "end-to-end";
+  if (!isClientProfile(clientProfile)) throw new Error(`Invalid client profile: ${clientProfile}`);
   const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
   return {
@@ -246,6 +258,7 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
     keep,
     reuseImages,
     bombardDomains: parseDomainSelection(values.get("--domains")),
+    clientProfile,
     rootDir,
     fitzSourceDir: resolve(env.FITZ_SOURCE_DIR ?? resolve(rootDir, "../fitz")),
   };
@@ -274,14 +287,24 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "chaos" ||
     value === "notice-fanout" ||
     value === "schedule-delivery" ||
+    value === "session-boundaries" ||
+    value === "queue-redelivery" ||
+    value === "lease-contention" ||
+    value === "hot-route-canary" ||
+    value === "protocol-abuse" ||
     value === "rpc-pressure" ||
     value === "rpc-stream-hose" ||
     value === "connection-storm" ||
     value === "domain-pressure" ||
+    value === "durability-crash-cuts" ||
     value === "all"
   );
 }
 
 function isScaleName(value: string): value is ScaleName {
   return value === "smoke" || value === "standard" || value === "large";
+}
+
+function isClientProfile(value: string): value is ClientProfile {
+  return value === "end-to-end" || value === "broker-isolation";
 }

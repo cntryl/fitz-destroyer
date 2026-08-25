@@ -44,6 +44,31 @@ data. It loads the same workload, stops Fitz, removes only that run's
 `fitz-cache` volume, starts Fitz, verifies the data, then performs one more clean
 restart and verifies it again.
 
+`durability-crash-cuts` first acknowledges one Queue enqueue, KV commit, Stream
+commit, and Schedule create. It then pauses Sqrzl so a second operation in each
+domain is in flight, sends `SIGKILL` to Fitz, resumes Sqrzl, and restarts the
+broker. Its ledger requires every acknowledged operation to be observable and
+allows an interrupted operation to be either present or absent because its
+outcome is ambiguous. An operation that was never started must never appear.
+
+`session-boundaries` holds a Queue reservation, an uncommitted KV transaction,
+an uncommitted Stream append session, and a Lease across a Fitz `SIGKILL` and
+reconnect. Every stale handle must reject. The Queue item must redeliver, the
+committed KV and Stream baselines must remain, the uncommitted mutations must
+not appear, and the ephemeral Lease must be unheld and reacquirable.
+
+`queue-redelivery` fills one Queue, reserves up to 1,024 messages in a victim
+client, and kills that exact container without completing them. A fresh fleet
+then drains the Queue. The host reconciles every deterministic sequence and
+requires the killed client's entire reservation set to reappear exactly once.
+
+`lease-contention` points every client at one Lease route and requires every
+critical section to receive a unique fencing token. It then kills a client
+inside a held critical section and requires a waiting client to acquire with a
+higher token. A final independent query must report no owner and no waiters.
+Fencing comparisons stay within one Fitz process lifetime; Lease state is
+ephemeral across broker restarts.
+
 `notice-fanout` starts two distinct fleets: `--clients` subscribers and the
 same number of publishers. Every subscriber installs a wildcard registration
 before any publisher starts. Publishers then send unique, fixed-size payloads
@@ -99,6 +124,21 @@ injecting faults. Use `--domains` to isolate one domain or an interference pair.
 It requires every selected domain to make progress on every client and fails if
 any selected-domain client operation errors.
 
+`hot-route-canary` directs all bombarders at shared routes in the domains
+selected by `--domains`. Shared KV, Stream, Schedule, and Lease operations can
+conflict by design, so their errors are recorded rather than treated as the
+canary verdict. While those routes are hot, an independent client performs
+exact Queue, KV, Stream, Schedule, Notice, Lease, and RPC round trips on cold
+routes. The run fails if a hot domain makes no progress or any cold canary
+operation fails.
+
+`protocol-abuse` bypasses the Fitz client for an isolated raw WebSocket phase.
+Disposable containers send text-before-CONNECT, empty and truncated TLVs,
+domain-before-CONNECT, unknown extended types, duplicate tags, declared-length
+truncation, and oversized frames. The scenario does not depend on a specific
+connection-close policy; afterward, an official-client canary must still pass
+all seven domains.
+
 `chaos` starts a configurable replica set of client containers. Every replica
 continuously exercises Queue, KV, Stream, Schedule, Notice, Lease, and RPC. The
 host driver then, in order:
@@ -143,12 +183,18 @@ entries. Use `large` for 200,000 total entries.
 ```sh
 npm run destroy -- clean-restart --scale standard
 npm run destroy -- cache-loss --scale large --seed 8675309
+npm run destroy -- durability-crash-cuts --scale smoke
+npm run destroy -- session-boundaries --scale smoke
+npm run destroy -- queue-redelivery --scale standard --clients 8
+npm run destroy -- lease-contention --scale standard --clients 8
 npm run destroy -- notice-fanout --scale standard --clients 8
 npm run destroy -- schedule-delivery --scale standard --clients 8
 npm run destroy -- rpc-pressure --scale standard --clients 8
 npm run destroy -- rpc-stream-hose --scale standard --clients 4
 npm run destroy -- connection-storm --scale standard --clients 8
 npm run destroy -- domain-pressure --domains queue,notice --clients 8 --phase-ms 5000
+npm run destroy -- hot-route-canary --domains queue,kv,stream --clients 8
+npm run destroy -- protocol-abuse --scale standard --clients 8
 npm run destroy -- chaos --clients 8 --phase-ms 10000
 ```
 
@@ -175,6 +221,7 @@ Run artifacts are written to `artifacts/<run-id>/` and include:
 - per-fault logs captured before killed containers are removed
 - Schedule delivery's expected/observed cardinality, missing-sequence samples,
   and client saturation events in `schedule-delivery-observed.json`
+- durability crash-cut, Queue redelivery, and Lease fencing ledgers
 
 The harness publishes Fitz only on `127.0.0.1`. Sqrzl is reachable only inside
 the Compose network.
@@ -182,7 +229,7 @@ the Compose network.
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|schedule-delivery|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -197,6 +244,7 @@ fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|schedule-delivery|r
   --handler-delay-ms <n>          Live consumer/worker delay (scale default)
   --schedule-lead-ms <n>          Minimum lead before the due minute (scale default)
   --domains <list>                Bombard domains (default: all seven)
+  --client-profile <name>         end-to-end or broker-isolation (default: end-to-end)
   --rpc-stream-calls <n>          Streaming RPC calls per caller (scale default)
   --rpc-stream-frames <n>         Response frames per streaming call (scale default)
   --rpc-stream-frame-bytes <n>    Bytes per streaming response frame (scale default)
@@ -208,6 +256,14 @@ fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|schedule-delivery|r
 Use `--reuse-images` for rapid repeated runs only after both local images have
 been built from the source you intend to test. The default rebuild remains the
 safe choice after changing Fitz or the harness client.
+
+The default `--client-profile end-to-end` keeps the configured fitz-ts async
+handler concurrency, so a run includes realistic client-side pressure. Use
+`--client-profile broker-isolation` for a comparison run; it raises that
+dispatcher limit enough that the client's finite callback queue should not be
+the first bottleneck. This still uses fitz-ts for encoding, transport, and
+domain APIs and therefore is not a pure server benchmark. `protocol-abuse` is
+the only raw-WebSocket phase.
 
 Notice and RPC live scenarios deliberately create `2N` client containers and
 connections for `--clients N`: Notice uses separate publisher and subscriber

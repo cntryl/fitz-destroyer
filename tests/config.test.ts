@@ -130,6 +130,18 @@ test("should_accept_domain_pressure", () => {
   assert.equal(config.clientReplicas, 8);
 });
 
+test("should_select_the_broker_isolation_client_profile", () => {
+  // Arrange
+  const args = ["hot-route-canary", "--client-profile", "broker-isolation"];
+
+  // Act
+  const config = parseArgs(args, {});
+
+  // Assert
+  assert.equal(config.scenario, "hot-route-canary");
+  assert.equal(config.clientProfile, "broker-isolation");
+});
+
 test("should_apply_rpc_stream_hose_scale_and_overrides", () => {
   // Arrange
   const args = [

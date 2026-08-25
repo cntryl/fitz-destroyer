@@ -27,10 +27,22 @@ type ProgressRecord = {
 type BombardTotals = Record<Domain, { success: number; error: number }>;
 
 export type LiveRole =
+  | "durability-verifier"
+  | "durability-writer"
+  | "lease-contender"
+  | "lease-owner"
+  | "lease-probe"
+  | "hot-route"
+  | "canary"
+  | "protocol-abuse"
   | "notice-publisher"
   | "notice-subscriber"
   | "schedule-producer"
   | "schedule-subscriber"
+  | "session-boundaries"
+  | "queue-redelivery-producer"
+  | "queue-redelivery-victim"
+  | "queue-redelivery-drainer"
   | "rpc-caller"
   | "rpc-worker"
   | "rpc-stream-caller"
@@ -72,6 +84,7 @@ export class ComposeStack {
       DESTROYER_NAMESPACE: namespace,
       DESTROYER_SEED: String(config.seed),
       DESTROYER_DOMAINS: config.bombardDomains.join(","),
+      DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
     };
   }
 
@@ -258,6 +271,17 @@ export class ComposeStack {
   async restartFitz(): Promise<void> {
     await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
     await this.waitReady();
+  }
+
+  async pauseSqrzl(): Promise<void> {
+    await this.#artifacts.event("sqrzl_pause_started");
+    await this.compose(["pause", "sqrzl"], { stream: true });
+    await this.#artifacts.event("sqrzl_pause_complete");
+  }
+
+  async unpauseSqrzl(): Promise<void> {
+    await this.compose(["unpause", "sqrzl"], { stream: true, allowFailure: true });
+    await this.#artifacts.event("sqrzl_unpaused");
   }
 
   async killOneClientAndRestore(replicas: number): Promise<string> {
@@ -541,7 +565,7 @@ export class ComposeStack {
         DESTROYER_OPERATIONS: String(shape.entriesPerResource),
         DESTROYER_PAYLOAD_BYTES: String(shape.payloadBytes),
         DESTROYER_CONCURRENCY: String(this.#config.liveConcurrency),
-        DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(this.#config.liveConcurrency),
+        DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(this.#config)),
         DESTROYER_HANDLER_DELAY_MS: String(this.#config.handlerDelayMs),
         DESTROYER_JOB_TIMEOUT_MS: String(this.#config.startupTimeoutMs),
         ...extraEnv,
@@ -586,6 +610,10 @@ export class ComposeStack {
     }
     await this.captureRoleLogs(containers, `${event}-timeout`);
     throw new Error(`Timed out waiting for ${event}: ${missing.join(", ")}`);
+  }
+
+  async roleLogs(containers: readonly RoleContainer[]): Promise<Map<string, string>> {
+    return this.captureRoleLogs(containers, "live-role-snapshot");
   }
 
   async finishRoleContainers(
@@ -763,4 +791,8 @@ function elapsedMs(startedAt: number): number {
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function clientHandlerConcurrency(config: RunConfig): number {
+  return config.clientProfile === "broker-isolation" ? 1_000_000 : config.liveConcurrency;
 }

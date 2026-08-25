@@ -21,15 +21,42 @@ import {
   runScheduleSubscriber,
   type ScheduleProducerAction,
 } from "./workloads/schedule-delivery.js";
+import { runSessionBoundaries } from "./workloads/session-boundaries.js";
+import {
+  runDurabilityCrashCut,
+  type DurabilityAction,
+} from "./workloads/durability-crash-cuts.js";
+import {
+  runLeaseContention,
+  type LeaseContentionAction,
+} from "./workloads/lease-contention.js";
+import {
+  runQueueRedelivery,
+  type QueueRedeliveryAction,
+} from "./workloads/queue-redelivery.js";
+import { allCanaryDomains, runCanary } from "./workloads/canary.js";
+import { runProtocolAbuse } from "./workloads/protocol-abuse.js";
 
 type WorkerMode =
   | "load"
   | "verify"
   | "bombard"
+  | "durability-verifier"
+  | "durability-writer"
+  | "lease-contender"
+  | "lease-owner"
+  | "lease-probe"
+  | "hot-route"
+  | "canary"
+  | "protocol-abuse"
   | "notice-publisher"
   | "notice-subscriber"
   | "schedule-producer"
   | "schedule-subscriber"
+  | "session-boundaries"
+  | "queue-redelivery-producer"
+  | "queue-redelivery-victim"
+  | "queue-redelivery-drainer"
   | "rpc-caller"
   | "rpc-worker"
   | "rpc-stream-caller"
@@ -55,6 +82,20 @@ await main().catch((error: unknown) => {
 });
 
 async function main(): Promise<void> {
+  if (mode === "protocol-abuse") {
+    const signal = AbortSignal.any([
+      shutdown.signal,
+      AbortSignal.timeout(positiveEnv("DESTROYER_JOB_TIMEOUT_MS", 180_000)),
+    ]);
+    await runProtocolAbuse(
+      process.env.FITZ_URL ?? "ws://fitz:4090/ws",
+      positiveEnv("DESTROYER_OPERATIONS", 100),
+      positiveEnv("DESTROYER_CONCURRENCY", 8),
+      signal,
+      log,
+    );
+    return;
+  }
   const client = makeClient(mode !== "load" && mode !== "verify");
   try {
     await client.connectWhenReady({
@@ -78,7 +119,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (mode === "bombard") {
+    if (mode === "bombard" || mode === "hot-route") {
       await bombard(client);
       return;
     }
@@ -138,9 +179,13 @@ async function runLiveRole(
 ): Promise<void> {
   const jobTimeoutMs = positiveEnv("DESTROYER_JOB_TIMEOUT_MS", 180_000);
   const signal =
+    liveMode === "durability-writer" ||
+    liveMode === "lease-owner" ||
+    liveMode === "queue-redelivery-victim" ||
     liveMode === "rpc-worker" ||
     liveMode === "rpc-stream-worker" ||
-    liveMode === "schedule-subscriber"
+    liveMode === "schedule-subscriber" ||
+    liveMode === "session-boundaries"
       ? shutdown.signal
       : AbortSignal.any([shutdown.signal, AbortSignal.timeout(jobTimeoutMs)]);
   const options: LiveCommonOptions = {
@@ -160,7 +205,65 @@ async function runLiveRole(
     log("live_producer_released", { mode: liveMode, workerId: options.workerId });
   }
 
-  if (liveMode === "notice-publisher") {
+  if (liveMode === "canary") {
+    await runCanary(
+      client,
+      { ...options, domains: allCanaryDomains() },
+      log,
+    );
+  } else if (liveMode === "durability-writer" || liveMode === "durability-verifier") {
+    await runDurabilityCrashCut(
+      client,
+      {
+        ...options,
+        seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+        action:
+          liveMode === "durability-verifier"
+            ? "verify"
+            : durabilityAction(process.env.DESTROYER_DURABILITY_ACTION),
+      },
+      log,
+    );
+  } else if (
+    liveMode === "lease-contender" ||
+    liveMode === "lease-owner" ||
+    liveMode === "lease-probe"
+  ) {
+    await runLeaseContention(
+      client,
+      {
+        ...options,
+        action: leaseContentionAction(process.env.DESTROYER_LEASE_ACTION),
+        participant: routeSegment(
+          process.env.DESTROYER_LEASE_PARTICIPANT ?? `${liveMode}-${options.workerId}`,
+        ),
+      },
+      log,
+    );
+  } else if (
+    liveMode === "queue-redelivery-producer" ||
+    liveMode === "queue-redelivery-victim" ||
+    liveMode === "queue-redelivery-drainer"
+  ) {
+    await runQueueRedelivery(
+      client,
+      {
+        ...options,
+        seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+        action: queueRedeliveryAction(process.env.DESTROYER_QUEUE_REDELIVERY_ACTION),
+      },
+      log,
+    );
+  } else if (liveMode === "session-boundaries") {
+    await runSessionBoundaries(
+      client,
+      {
+        ...options,
+        seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+      },
+      log,
+    );
+  } else if (liveMode === "notice-publisher") {
     await runNoticePublisher(client, options, log);
   } else if (liveMode === "notice-subscriber") {
     await runNoticeSubscriber(
@@ -229,7 +332,7 @@ async function runLiveRole(
 
 async function bombard(client: Client): Promise<void> {
   const namespace = routeSegment(requiredEnv("DESTROYER_NAMESPACE"));
-  const worker = routeSegment(hostname());
+  const worker = booleanEnv("DESTROYER_SHARED_ROUTE", false) ? "hot" : routeSegment(hostname());
   const selectedDomains = parseDomainSelection(process.env.DESTROYER_DOMAINS);
   const counters = emptyCounters();
   let window = emptyCounters();
@@ -389,10 +492,22 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "load" ||
     value === "verify" ||
     value === "bombard" ||
+    value === "durability-verifier" ||
+    value === "durability-writer" ||
+    value === "lease-contender" ||
+    value === "lease-owner" ||
+    value === "lease-probe" ||
+    value === "hot-route" ||
+    value === "canary" ||
+    value === "protocol-abuse" ||
     value === "notice-publisher" ||
     value === "notice-subscriber" ||
     value === "schedule-producer" ||
     value === "schedule-subscriber" ||
+    value === "session-boundaries" ||
+    value === "queue-redelivery-producer" ||
+    value === "queue-redelivery-victim" ||
+    value === "queue-redelivery-drainer" ||
     value === "rpc-caller" ||
     value === "rpc-worker" ||
     value === "rpc-stream-caller" ||
@@ -401,6 +516,24 @@ function requiredMode(value: string | undefined): WorkerMode {
     return value;
   }
   throw new Error(`DESTROYER_MODE is invalid; received ${value ?? "unset"}`);
+}
+
+function durabilityAction(value: string | undefined): DurabilityAction {
+  const action = value ?? "baseline";
+  if (action === "baseline" || action === "cut") return action;
+  throw new Error(`DESTROYER_DURABILITY_ACTION is invalid; received ${action}`);
+}
+
+function leaseContentionAction(value: string | undefined): LeaseContentionAction {
+  const action = value ?? "contend";
+  if (action === "contend" || action === "hold" || action === "probe") return action;
+  throw new Error(`DESTROYER_LEASE_ACTION is invalid; received ${action}`);
+}
+
+function queueRedeliveryAction(value: string | undefined): QueueRedeliveryAction {
+  const action = value ?? "drain";
+  if (action === "produce" || action === "victim" || action === "drain") return action;
+  throw new Error(`DESTROYER_QUEUE_REDELIVERY_ACTION is invalid; received ${action}`);
 }
 
 function scheduleProducerAction(value: string | undefined): ScheduleProducerAction {
