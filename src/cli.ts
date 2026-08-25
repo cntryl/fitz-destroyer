@@ -25,6 +25,7 @@ function expandScenarios(scenario: ScenarioName): readonly ConcreteScenario[] {
         "clean-restart",
         "cache-loss",
         "notice-fanout",
+        "schedule-delivery",
         "rpc-pressure",
         "rpc-stream-hose",
         "connection-storm",

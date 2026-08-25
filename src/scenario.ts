@@ -3,6 +3,7 @@ import type { RunConfig, ScenarioName } from "./config.js";
 import { Artifacts } from "./orchestration/artifacts.js";
 import { ComposeStack } from "./orchestration/compose.js";
 import { runRpcStreamHose } from "./orchestration/rpc-stream-hose.js";
+import { runScheduleDelivery } from "./orchestration/schedule-delivery.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -35,6 +36,7 @@ export async function runScenario(config: RunConfig, scenario: ConcreteScenario)
       phaseMs: config.phaseMs,
       liveConcurrency: config.liveConcurrency,
       handlerDelayMs: config.handlerDelayMs,
+      scheduleLeadMs: config.scheduleLeadMs,
       bombardDomains: config.bombardDomains,
       rpcStreamCalls: config.rpcStreamCalls,
       rpcStreamFrames: config.rpcStreamFrames,
@@ -72,6 +74,9 @@ export async function runScenario(config: RunConfig, scenario: ConcreteScenario)
       await stack.stopFitz();
     } else if (scenario === "notice-fanout") {
       await stack.runNoticeFanout(shape);
+      await stack.stopFitz();
+    } else if (scenario === "schedule-delivery") {
+      await runScheduleDelivery(stack, config, shape, artifacts);
       await stack.stopFitz();
     } else if (scenario === "rpc-pressure") {
       await stack.runRpcPressure(shape);

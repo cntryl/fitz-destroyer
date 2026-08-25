@@ -29,6 +29,8 @@ type BombardTotals = Record<Domain, { success: number; error: number }>;
 export type LiveRole =
   | "notice-publisher"
   | "notice-subscriber"
+  | "schedule-producer"
+  | "schedule-subscriber"
   | "rpc-caller"
   | "rpc-worker"
   | "rpc-stream-caller"

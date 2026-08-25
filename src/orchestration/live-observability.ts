@@ -1,4 +1,4 @@
-export type LiveDomain = "notice" | "rpc";
+export type LiveDomain = "notice" | "rpc" | "schedule";
 
 export type CleanupMetrics = {
   failures: number;
@@ -52,7 +52,14 @@ export function isLiveDomainQuiescent(
   const fields =
     domain === "notice"
       ? ["subscriptions_active", "routes_active"]
-      : ["workers_registered", "requests_pending", "pending_routes_active"];
+      : domain === "rpc"
+        ? ["workers_registered", "requests_pending", "pending_routes_active"]
+        : [
+            "schedules_active",
+            "subscriptions_active",
+            "pending_fire_claims",
+            "pending_ack_retries",
+          ];
   return fields.every((field) => snapshot.domain[field] === 0);
 }
 
@@ -64,18 +71,26 @@ export function assertNoDomainFailures(
   const fields =
     domain === "notice"
       ? ["failure_total", "delivery_drops_total", "wildcard_limit_rejects_total"]
-      : [
-          "failure_total",
-          "request_timeouts_total",
-          "backpressure_rejects_total",
-          "duplicate_correlation_rejects_total",
-          "wrong_worker_rejects_total",
-          "responses_dropped_closed_caller_total",
-          "responses_missing_pending_total",
-          "invalid_sequence_responses_total",
-          "invalid_sequence_errors_forwarded_total",
-          "invalid_sequence_errors_dropped_total",
-        ];
+      : domain === "rpc"
+        ? [
+            "failure_total",
+            "request_timeouts_total",
+            "backpressure_rejects_total",
+            "duplicate_correlation_rejects_total",
+            "wrong_worker_rejects_total",
+            "responses_dropped_closed_caller_total",
+            "responses_missing_pending_total",
+            "invalid_sequence_responses_total",
+            "invalid_sequence_errors_forwarded_total",
+            "invalid_sequence_errors_dropped_total",
+          ]
+        : [
+            "notify_failures_total",
+            "ack_failures_total",
+            "create_persistence_failures_total",
+            "upsert_persistence_failures_total",
+            "cancel_persistence_failures_total",
+          ];
   const increased = fields.flatMap((field) => {
     const delta = nonNegativeDelta(
       counter(before, field),

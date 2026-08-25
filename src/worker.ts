@@ -16,6 +16,11 @@ import {
   runRpcWorker,
   type LiveCommonOptions,
 } from "./workloads/live.js";
+import {
+  runScheduleProducer,
+  runScheduleSubscriber,
+  type ScheduleProducerAction,
+} from "./workloads/schedule-delivery.js";
 
 type WorkerMode =
   | "load"
@@ -23,6 +28,8 @@ type WorkerMode =
   | "bombard"
   | "notice-publisher"
   | "notice-subscriber"
+  | "schedule-producer"
+  | "schedule-subscriber"
   | "rpc-caller"
   | "rpc-worker"
   | "rpc-stream-caller"
@@ -32,6 +39,7 @@ type Counters = Record<Domain, { success: number; error: number }>;
 const mode = requiredMode(process.env.DESTROYER_MODE);
 const requestTimeoutMs = positiveEnv("DESTROYER_REQUEST_TIMEOUT_MS", 10_000);
 const shutdown = new AbortController();
+const clientAsyncHandlerBacklog = { active: 0, queued: 0 };
 let releaseStartGate: () => void = () => undefined;
 const startGate = new Promise<void>((resolve) => {
   releaseStartGate = resolve;
@@ -101,6 +109,26 @@ function makeClient(reconnect: boolean): Client {
       maxConcurrency: positiveEnv("DESTROYER_ASYNC_HANDLER_CONCURRENCY", 128),
       timeoutMs: requestTimeoutMs,
     },
+    observability: {
+      logger: {
+        log(level, clientEvent, fields): void {
+          if (level === "warn" || level === "error") {
+            log("fitz_client_event", { level, clientEvent, fields });
+          }
+        },
+      },
+      meter: {
+        counter(): void {},
+        histogram(): void {},
+        gauge(name, value): void {
+          if (name === "fitz.async_handlers.active") {
+            clientAsyncHandlerBacklog.active = value;
+          } else if (name === "fitz.async_handlers.queued") {
+            clientAsyncHandlerBacklog.queued = value;
+          }
+        },
+      },
+    },
   });
 }
 
@@ -110,7 +138,9 @@ async function runLiveRole(
 ): Promise<void> {
   const jobTimeoutMs = positiveEnv("DESTROYER_JOB_TIMEOUT_MS", 180_000);
   const signal =
-    liveMode === "rpc-worker" || liveMode === "rpc-stream-worker"
+    liveMode === "rpc-worker" ||
+    liveMode === "rpc-stream-worker" ||
+    liveMode === "schedule-subscriber"
       ? shutdown.signal
       : AbortSignal.any([shutdown.signal, AbortSignal.timeout(jobTimeoutMs)]);
   const options: LiveCommonOptions = {
@@ -156,7 +186,7 @@ async function runLiveRole(
       },
       log,
     );
-  } else {
+  } else if (liveMode === "rpc-stream-caller") {
     const framesPerCall = positiveEnv("DESTROYER_RPC_STREAM_FRAMES", 100);
     await runRpcStreamCaller(
       client,
@@ -175,6 +205,25 @@ async function runLiveRole(
       },
       log,
     );
+  } else {
+    const scheduleOptions = {
+      ...options,
+      seed: nonNegativeEnv("DESTROYER_SEED", 424_242),
+      fireAtMs: positiveEnv("DESTROYER_SCHEDULE_FIRE_AT_MS", 1),
+      handlerBacklog: () => ({ ...clientAsyncHandlerBacklog }),
+    };
+    if (liveMode === "schedule-subscriber") {
+      await runScheduleSubscriber(client, scheduleOptions, log);
+    } else {
+      await runScheduleProducer(
+        client,
+        {
+          ...scheduleOptions,
+          action: scheduleProducerAction(process.env.DESTROYER_SCHEDULE_ACTION),
+        },
+        log,
+      );
+    }
   }
 }
 
@@ -342,6 +391,8 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "bombard" ||
     value === "notice-publisher" ||
     value === "notice-subscriber" ||
+    value === "schedule-producer" ||
+    value === "schedule-subscriber" ||
     value === "rpc-caller" ||
     value === "rpc-worker" ||
     value === "rpc-stream-caller" ||
@@ -350,6 +401,12 @@ function requiredMode(value: string | undefined): WorkerMode {
     return value;
   }
   throw new Error(`DESTROYER_MODE is invalid; received ${value ?? "unset"}`);
+}
+
+function scheduleProducerAction(value: string | undefined): ScheduleProducerAction {
+  const action = value ?? "create";
+  if (action === "create" || action === "cancel") return action;
+  throw new Error(`DESTROYER_SCHEDULE_ACTION is invalid; received ${action}`);
 }
 
 function rpcStreamExpectedOutcome(
@@ -411,5 +468,10 @@ function errorMessage(error: unknown): string {
 }
 
 function log(event: string, fields: Record<string, unknown>): void {
-  process.stdout.write(`${JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields })}\n`);
+  process.stdout.write(
+    `${JSON.stringify(
+      { timestamp: new Date().toISOString(), event, ...fields },
+      (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value),
+    )}\n`,
+  );
 }

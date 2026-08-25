@@ -51,6 +51,21 @@ concurrently. The scenario verifies every while-connected subscriber received
 every publication exactly once with the original route and bytes. It does not
 expect replay after disconnect because Notice is ephemeral.
 
+`schedule-delivery` proves that durable timing intent produces the documented
+live handoff. It registers `--clients` wildcard subscribers, creates
+`--entries` each of Broadcast, Single, and deliberately canceled schedules,
+and verifies the remaining definitions through a fresh listing. Fitz is then
+gracefully restarted before the due UTC minute. The scenario waits for every
+client to reconnect and re-register, then requires every Broadcast occurrence
+to reach every subscriber exactly once, every Single occurrence to reach
+exactly one subscriber across the fleet, and every canceled occurrence to stay
+silent. Routes and payloads are checked byte-for-byte, and delivery later than
+Fitz's documented one-second window fails the run. The surviving definitions
+are canceled afterward and Schedule definitions, subscriptions, pending fire
+claims, acknowledgement retries, and session cleanup must all drain to zero.
+This proves live notification handoff, not durable downstream execution; use a
+Queue-backed design when execution itself must survive a consumer failure.
+
 `rpc-pressure` starts `--clients` workers on one shared route, waits for every
 registration, then starts the same number of caller containers. Callers keep a
 scale-dependent number of requests in flight, verify two ordered response
@@ -107,11 +122,11 @@ npm run destroy -- all --scale smoke --clients 4
 
 ## Load sizes
 
-| Scale | Durable families | Entries / live operations | Payload bytes | Live concurrency |
-| --- | ---: | ---: | ---: | ---: |
-| `smoke` | 2 | 20 | 256 | 8 |
-| `standard` | 10 | 1,000 | 1,024 | 64 |
-| `large` | 10 | 5,000 | 1,024 | 128 |
+| Scale | Durable families | Entries / live operations | Payload bytes | Live concurrency | Schedule lead |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `smoke` | 2 | 20 | 256 | 8 | 45 s |
+| `standard` | 10 | 1,000 | 1,024 | 64 | 120 s |
+| `large` | 10 | 5,000 | 1,024 | 128 | 300 s |
 
 The RPC stream hose has intentionally different presets:
 
@@ -129,6 +144,7 @@ entries. Use `large` for 200,000 total entries.
 npm run destroy -- clean-restart --scale standard
 npm run destroy -- cache-loss --scale large --seed 8675309
 npm run destroy -- notice-fanout --scale standard --clients 8
+npm run destroy -- schedule-delivery --scale standard --clients 8
 npm run destroy -- rpc-pressure --scale standard --clients 8
 npm run destroy -- rpc-stream-hose --scale standard --clients 4
 npm run destroy -- connection-storm --scale standard --clients 8
@@ -157,6 +173,8 @@ Run artifacts are written to `artifacts/<run-id>/` and include:
 - `compose.log` with timestamped Fitz and Sqrzl logs
 - `compose-ps.json` with final container state
 - per-fault logs captured before killed containers are removed
+- Schedule delivery's expected/observed cardinality, missing-sequence samples,
+  and client saturation events in `schedule-delivery-observed.json`
 
 The harness publishes Fitz only on `127.0.0.1`. Sqrzl is reachable only inside
 the Compose network.
@@ -164,7 +182,7 @@ the Compose network.
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|schedule-delivery|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -177,6 +195,7 @@ fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|rpc-pressure|rpc-st
   --phase-ms <n>                  Healthy traffic time around faults (default: 5000)
   --concurrency <n>               Live operations per producer/caller (scale default)
   --handler-delay-ms <n>          Live consumer/worker delay (scale default)
+  --schedule-lead-ms <n>          Minimum lead before the due minute (scale default)
   --domains <list>                Bombard domains (default: all seven)
   --rpc-stream-calls <n>          Streaming RPC calls per caller (scale default)
   --rpc-stream-frames <n>         Response frames per streaming call (scale default)
@@ -190,15 +209,20 @@ Use `--reuse-images` for rapid repeated runs only after both local images have
 been built from the source you intend to test. The default rebuild remains the
 safe choice after changing Fitz or the harness client.
 
-For live-domain scenarios, `--clients N` deliberately creates `2N` client
-containers and connections. Notice uses separate publisher and subscriber
-fleets; RPC uses separate caller and worker fleets. `--entries` controls the
-number of publications per publisher or calls per caller, while
+Notice and RPC live scenarios deliberately create `2N` client containers and
+connections for `--clients N`: Notice uses separate publisher and subscriber
+fleets, while RPC uses separate caller and worker fleets. `--entries` controls
+the number of publications per publisher or calls per caller, while
 `--concurrency` controls each producer/caller's maximum in-flight operations.
 `connection-storm` runs both fleet pairs together, creating `4N` connections per
 wave and repeatedly proving that all live state drains before the next wave.
 `rpc-stream-hose` uses its dedicated options above because calls, response
 frames, and frame bytes are independent destruction dimensions.
+`schedule-delivery` creates `3 * --entries` definitions, cancels one third
+before the due minute, and expects `--entries * --clients` Broadcast deliveries
+plus `--entries` Single deliveries after the broker restart. Increase
+`--schedule-lead-ms` when a large create set cannot leave ten seconds for the
+restart and subscriber recovery before its due minute.
 
 Use `--domains` with `chaos` to isolate a noisy domain or test cross-domain
 interference, for example `--domains queue` or `--domains queue,notice`.

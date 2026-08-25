@@ -91,6 +91,21 @@ test("should_accept_connection_storm", () => {
   assert.equal(config.reuseImages, true);
 });
 
+test("should_apply_schedule_delivery_lead_from_scale_and_override", () => {
+  // Arrange
+  const scaledArgs = ["schedule-delivery", "--scale", "standard"];
+  const overriddenArgs = ["schedule-delivery", "--schedule-lead-ms", "75000"];
+
+  // Act
+  const scaled = parseArgs(scaledArgs, {});
+  const overridden = parseArgs(overriddenArgs, {});
+
+  // Assert
+  assert.equal(scaled.scenario, "schedule-delivery");
+  assert.equal(scaled.scheduleLeadMs, 120_000);
+  assert.equal(overridden.scheduleLeadMs, 75_000);
+});
+
 test("should_accept_a_bombard_domain_subset", () => {
   // Arrange
   const args = ["chaos", "--domains", "queue,stream"];

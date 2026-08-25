@@ -7,6 +7,7 @@ export type ScenarioName =
   | "cache-loss"
   | "chaos"
   | "notice-fanout"
+  | "schedule-delivery"
   | "rpc-pressure"
   | "rpc-stream-hose"
   | "connection-storm"
@@ -26,6 +27,7 @@ type Scale = {
   rpcStreamFrames: number;
   rpcStreamFrameBytes: number;
   rpcStreamReaderDelayMs: number;
+  scheduleLeadMs: number;
 };
 
 export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
@@ -39,6 +41,7 @@ export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
     rpcStreamFrames: 100,
     rpcStreamFrameBytes: 1_024,
     rpcStreamReaderDelayMs: 1,
+    scheduleLeadMs: 45_000,
   },
   standard: {
     resources: 10,
@@ -50,6 +53,7 @@ export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
     rpcStreamFrames: 1_000,
     rpcStreamFrameBytes: RPC_STREAM_MAX_FRAME_BYTES,
     rpcStreamReaderDelayMs: 1,
+    scheduleLeadMs: 120_000,
   },
   large: {
     resources: 10,
@@ -61,6 +65,7 @@ export const SCALE_PRESETS: Readonly<Record<ScaleName, Scale>> = {
     rpcStreamFrames: 5_000,
     rpcStreamFrameBytes: RPC_STREAM_MAX_FRAME_BYTES,
     rpcStreamReaderDelayMs: 2,
+    scheduleLeadMs: 300_000,
   },
 };
 
@@ -79,7 +84,7 @@ export type RunConfig = Scale & {
   fitzSourceDir: string;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|schedule-delivery|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -92,6 +97,7 @@ const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|notice-fanout|rpc-
   --phase-ms <n>                  Healthy traffic time around faults (default: 5000)
   --concurrency <n>               Live operations per producer/caller (scale default)
   --handler-delay-ms <n>          Live consumer/worker delay (scale default)
+  --schedule-lead-ms <n>          Minimum lead before the due minute (scale default)
   --domains <list>                Bombard domains (default: all seven)
   --rpc-stream-calls <n>          Streaming RPC calls per caller (scale default)
   --rpc-stream-frames <n>         Response frames per streaming call (scale default)
@@ -149,6 +155,7 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
     "--phase-ms",
     "--concurrency",
     "--handler-delay-ms",
+    "--schedule-lead-ms",
     "--domains",
     "--rpc-stream-calls",
     "--rpc-stream-frames",
@@ -200,6 +207,13 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
       preset.handlerDelayMs,
       0,
       60_000,
+    ),
+    scheduleLeadMs: integerOption(
+      values,
+      "--schedule-lead-ms",
+      preset.scheduleLeadMs,
+      10_000,
+      3_600_000,
     ),
     rpcStreamCalls: integerOption(
       values,
@@ -259,6 +273,7 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "cache-loss" ||
     value === "chaos" ||
     value === "notice-fanout" ||
+    value === "schedule-delivery" ||
     value === "rpc-pressure" ||
     value === "rpc-stream-hose" ||
     value === "connection-storm" ||

@@ -47,3 +47,26 @@ test("should_require_domain_state_and_cleanup_queue_to_quiesce", () => {
   assert.equal(cleanResult, true);
   assert.equal(pendingResult, false);
 });
+
+test("should_require_schedule_definitions_subscriptions_and_claims_to_drain", () => {
+  // Arrange
+  const cleanup = { failures: 0, retries: 0, successes: 0, pending: 0, oldestAgeMs: 0 };
+  const clean = {
+    domain: {
+      schedules_active: 0,
+      subscriptions_active: 0,
+      pending_fire_claims: 0,
+      pending_ack_retries: 0,
+    },
+    cleanup,
+  };
+  const active = { ...clean, domain: { ...clean.domain, pending_fire_claims: 1 } };
+
+  // Act
+  const cleanResult = isLiveDomainQuiescent("schedule", clean);
+  const activeResult = isLiveDomainQuiescent("schedule", active);
+
+  // Assert
+  assert.equal(cleanResult, true);
+  assert.equal(activeResult, false);
+});
