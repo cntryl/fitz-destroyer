@@ -644,9 +644,11 @@ export class ComposeStack {
   }
 
   private async fetchJson(path: string): Promise<Readonly<Record<string, unknown>>> {
-    const response = await fetch(`http://127.0.0.1:${this.#config.port}${path}`, {
-      signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
-    });
+    const response = await fetchWithTransientRetry(() =>
+      fetch(`http://127.0.0.1:${this.#config.port}${path}`, {
+        signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
+      })
+    );
     if (!response.ok) {
       throw new Error(`${path} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
     }
@@ -658,9 +660,11 @@ export class ComposeStack {
   }
 
   private async fetchTextAt(url: string, label: string): Promise<string> {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
-    });
+    const response = await fetchWithTransientRetry(() =>
+      fetch(url, {
+        signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
+      })
+    );
     if (!response.ok) {
       throw new Error(`${label} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
     }
@@ -954,6 +958,23 @@ export class ComposeStack {
       },
     );
   }
+}
+
+export async function fetchWithTransientRetry(
+  fetchOnce: () => Promise<Response>,
+  attempts = 3,
+  retryDelayMs = 100,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetchOnce();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await sleep(retryDelayMs);
+    }
+  }
+  throw lastError;
 }
 
 function parseWindowSuccesses(logs: string): Record<Domain, number> {

@@ -243,7 +243,7 @@ export function assertProgressWindows(
   windowMs = 10_000,
 ): void {
   const duration = Math.max(1, completedAtMs - startedAtMs);
-  const windows = Math.max(1, Math.ceil(duration / windowMs));
+  const windows = Math.max(1, Math.floor(duration / windowMs));
   const missing: string[] = [];
   for (const [container, log] of logs) {
     const totals = Array.from({ length: windows }, () =>

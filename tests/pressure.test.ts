@@ -10,7 +10,11 @@ import {
   recordStageLatency,
   type PressureBrokerSample,
 } from "../src/pressure.js";
-import { parseDockerMemoryUsage, prometheusMetric } from "../src/orchestration/compose.js";
+import {
+  fetchWithTransientRetry,
+  parseDockerMemoryUsage,
+  prometheusMetric,
+} from "../src/orchestration/compose.js";
 import {
   analyzePressureLogs,
   assertProgressWindows,
@@ -194,6 +198,19 @@ test("should_require_progress_from_every_client_and_domain_in_each_window", () =
   );
 });
 
+test("should_not_require_progress_in_a_trailing_partial_window", () => {
+  const records = [
+    progress("2026-08-25T12:00:05.000Z", 1, 1),
+    progress("2026-08-25T12:00:15.000Z", 1, 1),
+  ].join("\n");
+  const start = Date.parse("2026-08-25T12:00:00.000Z");
+  const end = Date.parse("2026-08-25T12:00:20.001Z");
+
+  assert.doesNotThrow(() =>
+    assertProgressWindows(new Map([["client", records]]), ["queue", "rpc"], start, end),
+  );
+});
+
 test("should_parse_binary_docker_memory_units", () => {
   assert.equal(parseDockerMemoryUsage("128MiB / 1GiB"), 128 * 1_024 * 1_024);
   assert.equal(parseDockerMemoryUsage("1.5GiB / 8GiB"), 1.5 * 1_024 ** 3);
@@ -208,6 +225,19 @@ test("should_sum_labeled_prometheus_series_for_broker_snapshots", () => {
 
   assert.equal(prometheusMetric(metrics, "fitz_mailbox_depth"), 10);
   assert.equal(prometheusMetric(metrics, "missing"), 0);
+});
+
+test("should_retry_transient_broker_sampling_fetch_failures", async () => {
+  let attempts = 0;
+
+  const response = await fetchWithTransientRetry(async () => {
+    attempts += 1;
+    if (attempts < 3) throw new TypeError("fetch failed");
+    return new Response("ok");
+  }, 3, 0);
+
+  assert.equal(attempts, 3);
+  assert.equal(await response.text(), "ok");
 });
 
 function sample(messagesPending: number, rssBytes: number): PressureBrokerSample {
