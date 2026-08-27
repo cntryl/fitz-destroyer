@@ -174,6 +174,34 @@ function extractScenarioMetrics(
     return recoveryScenarioMetrics(events);
   }
   if (scenario === "durability-crash-cuts") return crashCutMetrics(events);
+  if (scenario === "queue-overload-recovery") {
+    return completionEventMetrics(events, "queue_overload_recovery_complete", [
+      ["attempted", "Queue attempts"],
+      ["failed", "Bounded failures"],
+      ["recovered", "Recovered records"],
+      ["probeCompleted", "Post-overload probe completions"],
+    ]);
+  }
+  if (scenario === "response-loss") {
+    return completionEventMetrics(events, "response_loss_complete", [
+      ["attempted", "Durable attempts"],
+      ["observedAfterDrop", "Reconciled ambiguous outcomes"],
+    ]);
+  }
+  if (scenario === "active-graceful-shutdown") {
+    return completionEventMetrics(events, "active_graceful_shutdown_complete", [
+      ["durableOperationsStarted", "Durable operations started"],
+      ["rpcCallsInterrupted", "RPC calls interrupted"],
+      ["probeFrames", "Post-shutdown probe frames"],
+    ]);
+  }
+  if (scenario === "half-open-session") {
+    return completionEventMetrics(events, "half_open_session_complete", [
+      ["staleRejections", "Stale-handle rejections"],
+      ["queueRedelivered", "Queue redeliveries"],
+      ["leaseReacquired", "Lease reacquisitions"],
+    ]);
+  }
   if (scenario === "queue-redelivery") return queueRedeliveryMetrics(events);
   if (scenario === "lease-contention") return leaseContentionMetrics(events);
   if (scenario === "hot-route-canary") return hotRouteMetrics(events, workloadDurationMs);
@@ -211,6 +239,29 @@ function recoveryScenarioMetrics(events: readonly EventRecord[]): MetricCollecti
     addCountAndRate(metrics, `${mode}-entries`, `${capitalize(mode)} entries`, entries, "entries", semantics, durationMs);
   }
   addRestartMetrics(metrics, events);
+  return metrics;
+}
+
+function completionEventMetrics(
+  events: readonly EventRecord[],
+  eventName: string,
+  fields: readonly (readonly [string, string])[],
+): MetricCollections {
+  const metrics = mutableMetrics();
+  const complete = requiredLastEvent(events, eventName);
+  const durationMs = eventDuration(complete);
+  for (const [key, label] of fields) {
+    addCountAndRate(
+      metrics,
+      key,
+      label,
+      numberField(complete, key),
+      "outcomes",
+      "verified fault and recovery outcomes",
+      durationMs,
+    );
+  }
+  addRecovery(metrics, "scenario-recovery", "Fault injection through recovery verification", durationMs);
   return metrics;
 }
 
@@ -784,6 +835,10 @@ async function readEvents(directory: string): Promise<{ events: EventRecord[]; e
 function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly EventRecord[]): number | null {
   const names: Partial<Record<ConcreteScenario, string>> = {
     "durability-crash-cuts": "durability_crash_cuts_complete",
+    "queue-overload-recovery": "queue_overload_recovery_complete",
+    "response-loss": "response_loss_complete",
+    "active-graceful-shutdown": "active_graceful_shutdown_complete",
+    "half-open-session": "half_open_session_complete",
     "queue-redelivery": "queue_redelivery_complete",
     "lease-contention": "lease_contention_complete",
     "hot-route-canary": "hot_route_canary_complete",

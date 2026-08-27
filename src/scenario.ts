@@ -19,6 +19,10 @@ import { runTransactionContentionScenario } from "./orchestration/transaction-co
 import { runStreamReplayScenario } from "./orchestration/stream-replay.js";
 import { runScheduleOutageScenario } from "./orchestration/schedule-outage.js";
 import { runLiveChurnScenario } from "./orchestration/live-churn.js";
+import { runQueueOverloadRecoveryScenario } from "./orchestration/queue-overload.js";
+import { runResponseLossScenario } from "./orchestration/response-loss.js";
+import { runActiveGracefulShutdownScenario } from "./orchestration/active-graceful-shutdown.js";
+import { runHalfOpenSessionScenario } from "./orchestration/half-open-session.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -216,6 +220,14 @@ async function executeWorkload(
     await stack.runRecoveryJob("verify", shape);
   } else if (scenario === "durability-crash-cuts") {
     await runDurabilityCrashCutsScenario(stack, config, shape, artifacts);
+  } else if (scenario === "queue-overload-recovery") {
+    await runQueueOverloadRecoveryScenario(stack, config, shape, artifacts);
+  } else if (scenario === "response-loss") {
+    await runResponseLossScenario(stack, config, shape, artifacts);
+  } else if (scenario === "active-graceful-shutdown") {
+    await runActiveGracefulShutdownScenario(stack, config, shape, artifacts);
+  } else if (scenario === "half-open-session") {
+    await runHalfOpenSessionScenario(stack, config, shape, artifacts);
   } else if (scenario === "notice-fanout") {
     await stack.runNoticeFanout(shape);
   } else if (scenario === "queue-redelivery") {

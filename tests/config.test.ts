@@ -95,6 +95,17 @@ test("should_accept_connection_storm", () => {
   assert.equal(config.clientReplicas, 6);
 });
 
+test("should_accept_bucket_one_scenarios", () => {
+  for (const scenario of [
+    "queue-overload-recovery",
+    "response-loss",
+    "active-graceful-shutdown",
+    "half-open-session",
+  ]) {
+    assert.equal(parseArgs([scenario], {}).scenario, scenario);
+  }
+});
+
 test("should_reject_removed_reuse_images_option", () => {
   assert.throws(() => parseArgs(["clean-restart", "--reuse-images"], {}), /Missing value/);
 });

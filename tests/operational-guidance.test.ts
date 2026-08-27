@@ -281,6 +281,10 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
     ];
   }
   if (scenario === "durability-crash-cuts") return [{ event: "durability_crash_cut_iteration_complete", iteration: 1, elapsedMs: 500 }, { event: "durability_crash_cuts_complete", iterations: [{}], domains: durableDomains(), elapsedMs: 1_000 }];
+  if (scenario === "queue-overload-recovery") return [{ event: "queue_overload_recovery_complete", attempted: 100, failed: 10, recovered: 90, probeCompleted: 20, elapsedMs: 1_000 }];
+  if (scenario === "response-loss") return [{ event: "response_loss_complete", attempted: 4, acknowledgedAfterDrop: 0, observedAfterDrop: 2, elapsedMs: 1_000 }];
+  if (scenario === "active-graceful-shutdown") return [{ event: "active_graceful_shutdown_complete", durableOperationsStarted: 4, rpcCallsInterrupted: 1, probeFrames: 16, elapsedMs: 1_000 }];
+  if (scenario === "half-open-session") return [{ event: "half_open_session_complete", staleRejections: 4, queueRedelivered: 1, leaseReacquired: 1, elapsedMs: 1_000 }];
   if (scenario === "queue-redelivery") return [{ event: "queue_redelivery_complete", produced: 20, recovered: 20, elapsedMs: 1_000 }];
   if (scenario === "lease-contention") return [{ event: "lease_contention_complete", contenderAdmissions: 20, elapsedMs: 1_000 }];
   if (scenario === "hot-route-canary") return [{ event: "hot_route_canary_complete", hotTotals: { queue: { success: 10, error: 0 } }, canaryMaximumMs: { queue: 5 }, elapsedMs: 1_000 }];

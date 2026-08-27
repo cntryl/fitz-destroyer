@@ -50,7 +50,7 @@ export async function runStorageFaultsScenario(
     DESTROYER_DURABILITY_ITERATIONS: String(config.iterations),
   };
   await artifacts.event("storage_faults_started", { plan });
-  await stack.setStorageProxyFault({ mode: "healthy" });
+  await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
 
   const baseline = await stack.startRoleContainers("durability-writer", 1, shape, {
     ...environment,
@@ -74,7 +74,7 @@ export async function runStorageFaultsScenario(
     });
   }
 
-  await stack.setStorageProxyFault({ mode: "healthy" });
+  await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   await stack.ensureReady();
   const verifier = await stack.startRoleContainers("durability-verifier", 1, shape, {
     ...environment,
@@ -138,15 +138,15 @@ async function runStorageFaultIteration(
   environment: Readonly<Record<string, string>>,
   iteration: StorageFaultIteration,
 ): Promise<ReadonlyMap<string, string>> {
-  await stack.setStorageProxyFault({ mode: "healthy" });
+  await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   const waitForGate = iteration.fault !== "bounded-latency" && iteration.fault !== "provider-recovery";
 
   if (iteration.fault === "bounded-latency") {
-    await stack.setStorageProxyFault({ mode: "latency", latencyMs: 250 });
+    await stack.setFaultProxy("storage-proxy", { mode: "latency", latencyMs: 250 });
   } else if (iteration.fault === "connection-reset") {
-    await stack.setStorageProxyFault({ mode: "reset" });
+    await stack.setFaultProxy("storage-proxy", { mode: "reset" });
   } else if (iteration.fault === "provider-partition" || iteration.fault === "fitz-crash-inflight") {
-    await stack.setStorageProxyFault({ mode: "partition" });
+    await stack.setFaultProxy("storage-proxy", { mode: "partition" });
   }
 
   const writer = await stack.startRoleContainers("durability-writer", 1, shape, {
@@ -163,13 +163,13 @@ async function runStorageFaultIteration(
 
   if (iteration.fault === "connection-reset") {
     await sleep(250);
-    await stack.setStorageProxyFault({ mode: "healthy" });
+    await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   } else if (iteration.fault === "provider-partition") {
     await sleep(5_000);
-    await stack.setStorageProxyFault({ mode: "healthy" });
+    await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   } else if (iteration.fault === "fitz-crash-inflight") {
     await stack.killFitz();
-    await stack.setStorageProxyFault({ mode: "healthy" });
+    await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
     await stack.restartFitz();
   }
 
@@ -177,7 +177,7 @@ async function runStorageFaultIteration(
     writer,
     `storage-fault-${iteration.iteration.toString().padStart(3, "0")}-${iteration.fault}`,
   );
-  await stack.setStorageProxyFault({ mode: "healthy" });
+  await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   await stack.ensureReady();
   return logs;
 }

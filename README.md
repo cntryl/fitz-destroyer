@@ -55,6 +55,29 @@ every acknowledged operation to be observable, allows an interrupted operation
 to be present or absent, rejects duplicates, and records the seed and cut
 identity for every iteration.
 
+`queue-overload-recovery` blocks Fitz's storage path while several clients
+issue bounded concurrent Queue bursts. It requires admission failures to be
+reported instead of hanging, restores storage, reconciles every acknowledged
+enqueue against an exact drain, rejects unstarted or duplicate records, and
+requires a fresh Queue probe to complete afterward.
+
+`response-loss` routes one durable request wave through a directional client
+proxy that passes client-to-broker bytes while dropping broker replies. The
+client must not report an acknowledgement, and a fresh direct verifier
+reconciles Queue, KV, Stream, and Schedule outcomes as present or absent while
+preserving every acknowledged baseline.
+
+`active-graceful-shutdown` begins Queue, KV, Stream, and Schedule mutations
+while a streaming RPC is active, then requests Fitz's normal graceful stop.
+The live call must terminate, acknowledged durable outcomes must reconcile
+after restart, and a fresh streaming RPC probe must complete.
+
+`half-open-session` silently blackholes both directions of one proxied client
+connection. The fitz-ts heartbeat must detect the dead path; after the proxy is
+restored, the scenario applies the same stale-handle, Queue redelivery, KV and
+Stream rollback, and Lease release assertions as `session-boundaries` without
+restarting Fitz.
+
 `session-boundaries` holds a Queue reservation, an uncommitted KV transaction,
 an uncommitted Stream append session, and a Lease across a Fitz `SIGKILL` and
 reconnect. Every stale handle must reject. The Queue item must redeliver, the
@@ -254,6 +277,10 @@ entries. Use `large` for 200,000 total entries.
 npm run destroy -- clean-restart --scale standard
 npm run destroy -- cache-loss --scale large --seed 8675309
 npm run destroy -- durability-crash-cuts --scale smoke
+npm run destroy -- queue-overload-recovery --scale smoke --clients 4
+npm run destroy -- response-loss --scale smoke
+npm run destroy -- active-graceful-shutdown --scale smoke
+npm run destroy -- half-open-session --scale smoke
 npm run destroy -- session-boundaries --scale smoke
 npm run destroy -- queue-redelivery --scale standard --clients 8
 npm run destroy -- lease-contention --scale standard --clients 8
@@ -301,7 +328,8 @@ Run artifacts are written to `artifacts/<run-id>/` and include:
 - per-fault logs captured before killed containers are removed
 - Schedule delivery's expected/observed cardinality, missing-sequence samples,
   and client saturation events in `schedule-delivery-observed.json`
-- durability crash-cut, Queue redelivery, and Lease fencing ledgers
+- durability crash-cut, response-loss, active-shutdown, Queue overload,
+  Queue redelivery, and Lease fencing ledgers
 - `pressure-evidence.json` and, for soak, `soak-samples.ndjson`
 - `storage-fault-ledger.json` plus Queue/KV/Stream/Schedule/live-churn ledgers
 
@@ -340,15 +368,16 @@ minutes, and final analysis at 5 minutes. Its soak matrix entry runs for 8
 minutes, keeping the intended wall-clock budget at 25 minutes. Local soak runs
 retain the 15-minute default.
 
-The harness publishes Fitz and the storage proxy's ephemeral control port only
-on `127.0.0.1`. Sqrzl and the proxy data port are reachable only inside the
-Compose network. The host controls faults; no container receives the Docker
-socket.
+The harness publishes Fitz and both fault proxies' ephemeral control ports only
+on `127.0.0.1`. Sqrzl and both proxy data ports are reachable only inside the
+Compose network. The storage proxy is always in Fitz's storage path; only
+scenarios that need transport faults opt clients into the client proxy. The
+host controls faults; no container receives the Docker socket.
 
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain

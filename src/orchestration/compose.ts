@@ -31,6 +31,7 @@ import {
   sleep,
   type BombardTotals,
 } from "./compose-evidence.js";
+import type { FaultProxyFault } from "./fault-proxy.js";
 
 export type LiveRole =
   | "durability-verifier"
@@ -64,19 +65,15 @@ export type LiveRole =
   | "schedule-outage-producer"
   | "schedule-outage-canceller"
   | "schedule-outage-cleanup"
-  | "schedule-outage-subscriber";
+  | "schedule-outage-subscriber"
+  | "queue-overload-producer"
+  | "queue-overload-drainer";
 
 export type RoleContainer = {
   id: string;
   name: string;
   workerId: string;
 };
-
-export type StorageProxyFault =
-  | { mode: "healthy" }
-  | { mode: "latency"; latencyMs: number }
-  | { mode: "reset" }
-  | { mode: "partition" };
 
 type ContainerState = {
   status: string;
@@ -156,9 +153,15 @@ export class ComposeStack {
     const mode = this.#config.destroyerImage === undefined ? "source" : "published-images";
     await this.#artifacts.event("image_preparation_started", { mode });
     if (this.#config.destroyerImage === undefined) {
-      await this.compose(["build", "fitz", "client", "storage-proxy"], { stream: true });
+      await this.compose(
+        ["build", "fitz", "client", "storage-proxy", "client-proxy"],
+        { stream: true },
+      );
     } else {
-      await this.compose(["pull", "fitz", "client", "storage-proxy"], { stream: true });
+      await this.compose(
+        ["pull", "fitz", "client", "storage-proxy", "client-proxy"],
+        { stream: true },
+      );
     }
     await this.#artifacts.event("image_preparation_complete", {
       mode,
@@ -167,7 +170,10 @@ export class ComposeStack {
   }
 
   async startCore(): Promise<void> {
-    await this.compose(["up", "-d", "--no-build", "sqrzl", "storage-proxy", "fitz"], { stream: true });
+    await this.compose(
+      ["up", "-d", "--no-build", "sqrzl", "storage-proxy", "fitz", "client-proxy"],
+      { stream: true },
+    );
     await this.waitReady();
   }
 
@@ -456,8 +462,12 @@ export class ComposeStack {
     await this.#artifacts.event("sqrzl_unpaused");
   }
 
-  async setStorageProxyFault(fault: StorageProxyFault): Promise<void> {
-    const controlUrl = await this.storageProxyControlUrl();
+  async setFaultProxy(
+    service: "storage-proxy" | "client-proxy",
+    fault: FaultProxyFault,
+  ): Promise<void> {
+    const controlPort = service === "storage-proxy" ? "9100" : "9101";
+    const controlUrl = await this.faultProxyControlUrl(service, controlPort);
     const response = await fetch(`${controlUrl}/fault`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -466,9 +476,9 @@ export class ComposeStack {
     });
     const body = await response.text();
     if (!response.ok) {
-      throw new Error(`Storage proxy rejected ${fault.mode}: HTTP ${response.status}: ${body.slice(0, 500)}`);
+      throw new Error(`${service} rejected ${fault.mode}: HTTP ${response.status}: ${body.slice(0, 500)}`);
     }
-    await this.#artifacts.event("storage_proxy_fault_changed", {
+    await this.#artifacts.event(`${service.replaceAll("-", "_")}_fault_changed`, {
       fault,
       state: JSON.parse(body) as unknown,
     });
@@ -712,12 +722,12 @@ export class ComposeStack {
     return this.#metricsUrl;
   }
 
-  private async storageProxyControlUrl(): Promise<string> {
-    const result = await this.compose(["port", "storage-proxy", "9100"]);
+  private async faultProxyControlUrl(service: string, controlPort: string): Promise<string> {
+    const result = await this.compose(["port", service, controlPort]);
     const address = result.stdout.trim().split("\n")[0]?.trim();
     const match = /^(?:127\.0\.0\.1|\[::1\]|0\.0\.0\.0|\[::\]):(\d+)$/u.exec(address ?? "");
     if (match?.[1] === undefined) {
-      throw new Error(`Could not resolve loopback storage proxy control port from '${result.stdout.trim()}'`);
+      throw new Error(`Could not resolve loopback ${service} control port from '${result.stdout.trim()}'`);
     }
     return `http://127.0.0.1:${match[1]}`;
   }

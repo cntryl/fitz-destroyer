@@ -62,6 +62,10 @@ jobs:
           - clean-restart
           - cache-loss
           - durability-crash-cuts
+          - queue-overload-recovery
+          - response-loss
+          - active-graceful-shutdown
+          - half-open-session
           - queue-redelivery
           - lease-contention
           - hot-route-canary

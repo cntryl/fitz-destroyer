@@ -63,6 +63,7 @@ import {
   runScheduleOutage,
   type ScheduleOutageAction,
 } from "./workloads/schedule-outage.js";
+import { runQueueOverload } from "./workloads/queue-overload.js";
 
 type WorkerMode =
   | "load"
@@ -99,7 +100,9 @@ type WorkerMode =
   | "schedule-outage-producer"
   | "schedule-outage-canceller"
   | "schedule-outage-cleanup"
-  | "schedule-outage-subscriber";
+  | "schedule-outage-subscriber"
+  | "queue-overload-producer"
+  | "queue-overload-drainer";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -279,6 +282,19 @@ async function runLiveRole(
         participant: routeSegment(
           process.env.DESTROYER_LEASE_PARTICIPANT ?? `${liveMode}-${options.workerId}`,
         ),
+      },
+      log,
+    );
+  } else if (
+    liveMode === "queue-overload-producer" ||
+    liveMode === "queue-overload-drainer"
+  ) {
+    await runQueueOverload(
+      client,
+      {
+        ...options,
+        action: liveMode === "queue-overload-producer" ? "produce" : "drain",
+        workers: (process.env.DESTROYER_QUEUE_OVERLOAD_WORKERS ?? options.workerId).split(","),
       },
       log,
     );
@@ -687,19 +703,21 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "rpc-caller" ||
     value === "rpc-worker" ||
     value === "rpc-stream-caller" ||
-    value === "rpc-stream-worker"
-    || value === "pressure-reconciler" ||
+    value === "rpc-stream-worker" ||
+    value === "pressure-reconciler" ||
     value === "queue-lifecycle-producer" ||
     value === "queue-lifecycle-abandoner" ||
-    value === "queue-lifecycle-consumer"
-    || value === "transaction-contender" ||
+    value === "queue-lifecycle-consumer" ||
+    value === "transaction-contender" ||
     value === "transaction-holder" ||
     value === "transaction-verifier" ||
-    value === "stream-replay-worker"
-    || value === "schedule-outage-producer" ||
+    value === "stream-replay-worker" ||
+    value === "schedule-outage-producer" ||
     value === "schedule-outage-canceller" ||
     value === "schedule-outage-cleanup" ||
-    value === "schedule-outage-subscriber"
+    value === "schedule-outage-subscriber" ||
+    value === "queue-overload-producer" ||
+    value === "queue-overload-drainer"
   ) {
     return value;
   }

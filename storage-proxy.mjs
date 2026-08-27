@@ -1,10 +1,22 @@
 import http from "node:http";
 import net from "node:net";
 
-const upstreamHost = process.env.STORAGE_PROXY_UPSTREAM_HOST ?? "sqrzl";
-const upstreamPort = integerEnv("STORAGE_PROXY_UPSTREAM_PORT", 9_000);
-const dataPort = integerEnv("STORAGE_PROXY_DATA_PORT", 9_000);
-const controlPort = integerEnv("STORAGE_PROXY_CONTROL_PORT", 9_100);
+const proxyName = process.env.FAULT_PROXY_NAME ?? "storage-proxy";
+const eventPrefix = proxyName.replaceAll("-", "_");
+const upstreamHost = process.env.FAULT_PROXY_UPSTREAM_HOST ??
+  process.env.STORAGE_PROXY_UPSTREAM_HOST ?? "sqrzl";
+const upstreamPort = integerEnv(
+  "FAULT_PROXY_UPSTREAM_PORT",
+  integerEnv("STORAGE_PROXY_UPSTREAM_PORT", 9_000),
+);
+const dataPort = integerEnv(
+  "FAULT_PROXY_DATA_PORT",
+  integerEnv("STORAGE_PROXY_DATA_PORT", 9_000),
+);
+const controlPort = integerEnv(
+  "FAULT_PROXY_CONTROL_PORT",
+  integerEnv("STORAGE_PROXY_CONTROL_PORT", 9_100),
+);
 let fault = { mode: "healthy", latencyMs: 0 };
 const connections = new Set();
 
@@ -33,8 +45,10 @@ const controlServer = http.createServer(async (request, response) => {
       const body = JSON.parse(await readBody(request));
       const mode = body?.mode;
       const latencyMs = body?.latencyMs ?? 0;
-      if (!["healthy", "latency", "reset", "partition"].includes(mode)) {
-        throw new Error("mode must be healthy, latency, reset, or partition");
+      if (!["healthy", "latency", "reset", "partition", "blackhole", "downstream-drop"].includes(mode)) {
+        throw new Error(
+          "mode must be healthy, latency, reset, partition, blackhole, or downstream-drop",
+        );
       }
       if (!Number.isSafeInteger(latencyMs) || latencyMs < 0 || latencyMs > 60_000) {
         throw new Error("latencyMs must be an integer between 0 and 60000");
@@ -43,7 +57,7 @@ const controlServer = http.createServer(async (request, response) => {
       if (mode === "reset" || mode === "partition" || mode === "healthy") {
         for (const connection of [...connections]) closeConnection(connection);
       }
-      process.stdout.write(`${JSON.stringify({ event: "storage_proxy_fault_changed", ...fault })}\n`);
+      process.stdout.write(`${JSON.stringify({ event: `${eventPrefix}_fault_changed`, ...fault })}\n`);
       json(response, 200, { ...fault, connections: connections.size });
     } catch (error) {
       json(response, 400, { error: error instanceof Error ? error.message : String(error) });
@@ -54,10 +68,10 @@ const controlServer = http.createServer(async (request, response) => {
 });
 
 dataServer.listen(dataPort, "0.0.0.0", () => {
-  process.stdout.write(`${JSON.stringify({ event: "storage_proxy_data_ready", dataPort, upstreamHost, upstreamPort })}\n`);
+  process.stdout.write(`${JSON.stringify({ event: `${eventPrefix}_data_ready`, dataPort, upstreamHost, upstreamPort })}\n`);
 });
 controlServer.listen(controlPort, "0.0.0.0", () => {
-  process.stdout.write(`${JSON.stringify({ event: "storage_proxy_control_ready", controlPort })}\n`);
+  process.stdout.write(`${JSON.stringify({ event: `${eventPrefix}_control_ready`, controlPort })}\n`);
 });
 
 function connectUpstream(connection) {
@@ -66,20 +80,24 @@ function connectUpstream(connection) {
   connection.upstream = upstream;
   upstream.setNoDelay(true);
   upstream.on("connect", () => {
-    forward(connection, connection.client, upstream);
-    forward(connection, upstream, connection.client);
+    forward(connection, connection.client, upstream, "upstream");
+    forward(connection, upstream, connection.client, "downstream");
   });
   upstream.on("error", () => closeConnection(connection));
   upstream.on("close", () => closeConnection(connection));
 }
 
-function forward(connection, source, destination) {
+function forward(connection, source, destination, direction) {
   source.on("data", (chunk) => {
     if (fault.mode === "reset") {
       closeConnection(connection);
       return;
     }
-    if (fault.mode === "partition") return;
+    if (
+      fault.mode === "partition" ||
+      fault.mode === "blackhole" ||
+      (fault.mode === "downstream-drop" && direction === "downstream")
+    ) return;
     if (fault.mode === "latency" && fault.latencyMs > 0) {
       const timer = setTimeout(() => {
         connection.timers.delete(timer);

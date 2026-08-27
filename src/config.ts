@@ -9,7 +9,11 @@ export type ScenarioName =
   | "notice-fanout"
   | "schedule-delivery"
   | "session-boundaries"
+  | "half-open-session"
+  | "response-loss"
+  | "active-graceful-shutdown"
   | "queue-redelivery"
+  | "queue-overload-recovery"
   | "lease-contention"
   | "hot-route-canary"
   | "protocol-abuse"
@@ -109,7 +113,7 @@ export type RunConfig = Scale & {
   destroyerImage: string | undefined;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -337,7 +341,11 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "notice-fanout" ||
     value === "schedule-delivery" ||
     value === "session-boundaries" ||
+    value === "half-open-session" ||
+    value === "response-loss" ||
+    value === "active-graceful-shutdown" ||
     value === "queue-redelivery" ||
+    value === "queue-overload-recovery" ||
     value === "lease-contention" ||
     value === "hot-route-canary" ||
     value === "protocol-abuse" ||

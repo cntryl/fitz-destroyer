@@ -60,6 +60,22 @@ services:
     volumes:
       - fitz-cache:/data
 
+  client-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage-proxy
+    restart: "no"
+    depends_on:
+      - fitz
+    environment:
+      FAULT_PROXY_NAME: client-proxy
+      FAULT_PROXY_UPSTREAM_HOST: fitz
+      FAULT_PROXY_UPSTREAM_PORT: "4090"
+      FAULT_PROXY_DATA_PORT: "4090"
+      FAULT_PROXY_CONTROL_PORT: "9101"
+    ports:
+      - "127.0.0.1::9101"
+
   client:
     build:
       context: .
