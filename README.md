@@ -133,9 +133,10 @@ responses, late responses after caller cancellation or disconnect, and then
 healthy follow-up calls through a one-credit raw RPC worker. Every caller must
 terminate once and worker credit must remain reusable.
 
-`response-envelope-boundaries` checks exact-fit and one-over response payloads
-against the current TLV envelope limit, with Queue and Stream canaries proving
-that bounded responses reject or paginate cleanly rather than hanging.
+`response-envelope-boundaries` checks Queue, Stream, KV scan, Schedule listing,
+Notice delivery, and RPC response paths at their bounded response envelopes.
+Oversized aggregate results must paginate or reject with a typed error, one-over
+payloads must reject, and a small follow-up operation must succeed in every domain.
 
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through

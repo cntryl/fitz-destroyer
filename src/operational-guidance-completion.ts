@@ -116,7 +116,7 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
   },
   "response-envelope-boundaries": {
     event: "response_envelope_boundaries_complete",
-    fields: [["domains", "Boundary domains"], ["exactFit", "Exact-fit responses"], ["oneOverRejected", "One-over rejections"], ["canaryOperations", "Canary operations"]],
+    fields: [["domains", "Boundary domains"], ["exactFit", "Exact-fit responses"], ["oneOverRejected", "One-over rejections"], ["boundedAggregates", "Bounded aggregate responses"], ["canaryOperations", "Canary operations"]],
   },
 };
 
