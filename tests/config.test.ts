@@ -146,6 +146,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "control-lane-cleanup-under-saturation",
     "route-family-isolation-matrix",
     "rpc-response-state-conformance",
+    "response-envelope-boundaries",
   ];
 
   // Act

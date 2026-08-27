@@ -114,6 +114,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "rpc_response_state_conformance_complete",
     fields: [["cases", "Response-state cases"], ["callersTerminated", "Callers terminated"], ["healthyCalls", "Healthy follow-up calls"], ["healthyFailures", "Healthy follow-up failures"]],
   },
+  "response-envelope-boundaries": {
+    event: "response_envelope_boundaries_complete",
+    fields: [["domains", "Boundary domains"], ["exactFit", "Exact-fit responses"], ["oneOverRejected", "One-over rejections"], ["canaryOperations", "Canary operations"]],
+  },
 };
 
 export function completionMetricsForScenario(

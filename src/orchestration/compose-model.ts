@@ -50,7 +50,8 @@ export type LiveRole =
   | "shutdown-reconnect-cleanup-storm"
   | "control-lane-cleanup-under-saturation"
   | "route-family-isolation-matrix"
-  | "rpc-response-state-conformance";
+  | "rpc-response-state-conformance"
+  | "response-envelope-boundaries";
 
 export type RoleContainer = {
   id: string;

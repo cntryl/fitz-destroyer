@@ -103,6 +103,7 @@ import {
   runRouteFamilyIsolationMatrix,
 } from "./workloads/route-family-isolation-matrix.js";
 import { runRpcResponseStateConformance } from "./workloads/rpc-response-state-conformance.js";
+import { runResponseEnvelopeBoundaries } from "./workloads/response-envelope-boundaries.js";
 
 type WorkerMode =
   | "load"
@@ -159,7 +160,8 @@ type WorkerMode =
   | "shutdown-reconnect-cleanup-storm"
   | "control-lane-cleanup-under-saturation"
   | "route-family-isolation-matrix"
-  | "rpc-response-state-conformance";
+  | "rpc-response-state-conformance"
+  | "response-envelope-boundaries";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -399,6 +401,8 @@ async function runLiveRole(
       },
       log,
     );
+  } else if (liveMode === "response-envelope-boundaries") {
+    await runResponseEnvelopeBoundaries(client, options, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
   } else if (
@@ -914,7 +918,8 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "shutdown-reconnect-cleanup-storm" ||
     value === "control-lane-cleanup-under-saturation" ||
     value === "route-family-isolation-matrix" ||
-    value === "rpc-response-state-conformance"
+    value === "rpc-response-state-conformance" ||
+    value === "response-envelope-boundaries"
   ) {
     return value;
   }
