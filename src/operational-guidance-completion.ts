@@ -51,6 +51,31 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
       ["probeFrames", "Healthy probe frames"],
     ],
   },
+  "upgrade-recovery": {
+    event: "upgrade_recovery_complete",
+    fields: [["loaded", "Pre-replacement records"], ["verified", "Post-replacement records"]],
+    recoveryField: "replacementMs",
+  },
+  "cross-transport-recovery": {
+    event: "cross_transport_recovery_complete",
+    fields: [["websocketToTcpVerified", "WebSocket to TCP records"], ["tcpToWebsocketVerified", "TCP to WebSocket records"]],
+  },
+  "outbound-blackhole": {
+    event: "outbound_blackhole_complete",
+    fields: [["staleRejections", "Stale-handle rejections"], ["queueRedelivered", "Queue redeliveries"], ["leaseReacquired", "Lease reacquisitions"]],
+  },
+  "broker-pause": {
+    event: "broker_pause_complete",
+    fields: [["staleRejections", "Stale-handle rejections"], ["queueRedelivered", "Queue redeliveries"], ["leaseReacquired", "Lease reacquisitions"]],
+  },
+  "route-cardinality-churn": {
+    event: "route_cardinality_churn_scenario_complete",
+    fields: [["routes", "Unique route operations"], ["recoveryProbeOperations", "Recovery probe operations"]],
+  },
+  "cache-and-disk-exhaustion": {
+    event: "cache_and_disk_exhaustion_complete",
+    fields: [["rejectedMutations", "Exhaustion rejections"], ["verified", "Recovered baseline records"]],
+  },
 };
 
 export function completionMetricsForScenario(

@@ -106,6 +106,39 @@ frame or throw. A missing terminal must time out, while a thrown handler must
 produce its bounded terminal error frame. Runtime state must quiesce, and an
 independent well-behaved worker/caller probe must still complete afterward.
 
+`upgrade-recovery` loads the durable workload through a source image, replaces
+the Fitz container with the configured target image, and verifies every record
+through a fresh client. Set `FITZ_UPGRADE_FROM_IMAGE` to an older immutable
+image digest for a real cross-version run. Without it, the scenario still
+qualifies the container-replacement path and records `crossVersion: false`; it
+does not claim binary compatibility from a same-image replacement.
+
+`cross-transport-recovery` loads over WebSocket, discards the Fitz cache, and
+verifies over raw TCP. It then loads a separate ledger over TCP, performs a
+clean restart, and verifies that ledger over WebSocket.
+
+`outbound-blackhole` drops only broker-to-client bytes while preserving the
+client-to-broker path. Heartbeat detection must retire the stale session, all
+held handles must reject, durable in-flight state must reconcile, and the
+ephemeral Lease must be released after the direction is restored.
+
+`broker-pause` freezes the Fitz container long enough for heartbeat detection
+while Queue, KV, Stream, and Lease handles are open. After unpausing the same
+process, it applies the full stale-handle, rollback, redelivery, and Lease
+release assertions without treating a process restart as the recovery trigger.
+
+`route-cardinality-churn` executes a complete operation on a distinct concrete
+route for every selected sequence and every domain, cleans ephemeral and
+scheduled state, restarts Fitz, and requires an independent seven-domain
+canary. Durable KV and Stream routes intentionally remain as recovery pressure.
+
+`cache-and-disk-exhaustion` runs on two disposable 64 MiB tmpfs-backed Compose
+volumes. A root-only helper in the isolated stack fills Fitz's cache and then
+Sqrzl's blob volume to `ENOSPC`; each synchronous probe must reject. The helper
+removes only its exact filler file, the affected services are reconstructed,
+and the acknowledged baseline must verify after both phases. No Docker socket
+is mounted and the host filesystem is never used as the fill target.
+
 `session-boundaries` holds a Queue reservation, an uncommitted KV transaction,
 an uncommitted Stream append session, and a Lease across a Fitz `SIGKILL` and
 reconnect. Every stale handle must reject. The Queue item must redeliver, the
@@ -405,7 +438,7 @@ host controls faults; no container receives the Docker socket.
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain

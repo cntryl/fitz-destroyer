@@ -17,7 +17,7 @@ export async function runCanary(
   for (let sequence = 0; sequence < options.operations; sequence += 1) {
     for (const domain of options.domains) {
       const startedAt = performance.now();
-      await canaryOperation(client, options, domain, sequence);
+      await runCanaryOperation(client, options, domain, sequence);
       const elapsedMs = Math.round(performance.now() - startedAt);
       maximums[domain] = Math.max(maximums[domain] ?? 0, elapsedMs);
       log("canary_operation_complete", { domain, sequence, elapsedMs });
@@ -38,14 +38,15 @@ export function canaryRoute(domain: Domain, namespace: string, sequence = 0): st
   return `${domain}://destroyer/${namespace}/canary${suffix}`;
 }
 
-async function canaryOperation(
+export async function runCanaryOperation(
   client: Client,
   options: CanaryOptions,
   domain: Domain,
   sequence: number,
+  routeOverride?: string,
 ): Promise<void> {
   const signal = operationSignal(options);
-  const route = canaryRoute(domain, options.namespace, sequence);
+  const route = routeOverride ?? canaryRoute(domain, options.namespace, sequence);
   const payload = canaryPayload(domain, sequence, options.payloadBytes);
   if (domain === "queue") {
     await client.queue.enqueue(route, { body: payload, signal });

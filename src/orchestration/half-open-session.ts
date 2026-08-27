@@ -35,6 +35,18 @@ export async function runHalfOpenSessionScenario(
   const logs = await stack.finishRoleContainers(holder, "half-open-session");
   const log = logs.get("0");
   if (log === undefined) throw new Error("Half-open session worker log was missing");
+  const complete = assertSessionBoundaryEvidence(log);
+  await artifacts.event("half_open_session_complete", {
+    staleRejections: numericField(complete, "staleRejections"),
+    queueRedelivered: numericField(complete, "queueRedelivered"),
+    leaseReacquired: numericField(complete, "leaseReacquired"),
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
+}
+
+export function assertSessionBoundaryEvidence(
+  log: string,
+): Readonly<Record<string, unknown>> {
   const complete = requiredEvent(log, "session_boundaries_complete");
   assertCount(complete, "staleRejections", 4);
   assertCount(complete, "queueRedelivered", 1);
@@ -45,12 +57,7 @@ export async function runHalfOpenSessionScenario(
   if (complete.leaseHeldAfterRestart !== false) {
     throw new Error("Lease remained held after the half-open session was reaped");
   }
-  await artifacts.event("half_open_session_complete", {
-    staleRejections: 4,
-    queueRedelivered: 1,
-    leaseReacquired: 1,
-    elapsedMs: Math.round(performance.now() - startedAt),
-  });
+  return complete;
 }
 
 function assertCount(

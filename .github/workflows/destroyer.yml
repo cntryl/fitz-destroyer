@@ -71,6 +71,12 @@ jobs:
           - queue-dead-letter-fencing
           - cold-boot-provider-outage
           - hostile-rpc-worker
+          - upgrade-recovery
+          - cross-transport-recovery
+          - outbound-blackhole
+          - broker-pause
+          - route-cardinality-churn
+          - cache-and-disk-exhaustion
           - queue-redelivery
           - lease-contention
           - hot-route-canary

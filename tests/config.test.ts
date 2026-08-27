@@ -118,6 +118,22 @@ test("should_accept_bucket_two_scenarios", () => {
   }
 });
 
+test("should_accept_bucket_three_scenarios_and_upgrade_source", () => {
+  const scenarios = [
+    "upgrade-recovery",
+    "cross-transport-recovery",
+    "outbound-blackhole",
+    "broker-pause",
+    "route-cardinality-churn",
+    "cache-and-disk-exhaustion",
+  ];
+  for (const scenario of scenarios) {
+    const config = parseArgs([scenario], { FITZ_UPGRADE_FROM_IMAGE: "fitz:previous" });
+    assert.equal(config.scenario, scenario);
+    assert.equal(config.upgradeFromImage, "fitz:previous");
+  }
+});
+
 test("should_reject_removed_reuse_images_option", () => {
   assert.throws(() => parseArgs(["clean-restart", "--reuse-images"], {}), /Missing value/);
 });

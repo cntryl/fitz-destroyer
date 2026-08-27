@@ -1,0 +1,14 @@
+# Linux-backed bounded volumes used only by cache-and-disk-exhaustion.
+volumes:
+  sqrzl-blobs:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=${DESTROYER_EXHAUSTION_VOLUME_SIZE:-64m},mode=1777"
+  fitz-cache:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=${DESTROYER_EXHAUSTION_VOLUME_SIZE:-64m},mode=1777"

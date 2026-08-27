@@ -300,6 +300,12 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
       elapsedMs: 1_000,
     }];
   }
+  if (scenario === "upgrade-recovery") return [{ event: "upgrade_recovery_complete", loaded: 80, verified: 80, replacementMs: 200, elapsedMs: 1_000 }];
+  if (scenario === "cross-transport-recovery") return [{ event: "cross_transport_recovery_complete", websocketToTcpVerified: 80, tcpToWebsocketVerified: 80, elapsedMs: 1_000 }];
+  if (scenario === "outbound-blackhole") return [{ event: "outbound_blackhole_complete", staleRejections: 4, queueRedelivered: 1, leaseReacquired: 1, elapsedMs: 1_000 }];
+  if (scenario === "broker-pause") return [{ event: "broker_pause_complete", pausedMs: 6_000, staleRejections: 4, queueRedelivered: 1, leaseReacquired: 1, elapsedMs: 7_000 }];
+  if (scenario === "route-cardinality-churn") return [{ event: "route_cardinality_churn_scenario_complete", routes: 140, recoveryProbeOperations: 7, elapsedMs: 1_000 }];
+  if (scenario === "cache-and-disk-exhaustion") return [{ event: "cache_and_disk_exhaustion_complete", rejectedMutations: 2, verified: 80, elapsedMs: 1_000 }];
   if (scenario === "queue-redelivery") return [{ event: "queue_redelivery_complete", produced: 20, recovered: 20, elapsedMs: 1_000 }];
   if (scenario === "lease-contention") return [{ event: "lease_contention_complete", contenderAdmissions: 20, elapsedMs: 1_000 }];
   if (scenario === "hot-route-canary") return [{ event: "hot_route_canary_complete", hotTotals: { queue: { success: 10, error: 0 } }, canaryMaximumMs: { queue: 5 }, elapsedMs: 1_000 }];

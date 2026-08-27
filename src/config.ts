@@ -19,6 +19,12 @@ export type ScenarioName =
   | "queue-dead-letter-fencing"
   | "cold-boot-provider-outage"
   | "hostile-rpc-worker"
+  | "upgrade-recovery"
+  | "cross-transport-recovery"
+  | "outbound-blackhole"
+  | "broker-pause"
+  | "route-cardinality-churn"
+  | "cache-and-disk-exhaustion"
   | "lease-contention"
   | "hot-route-canary"
   | "protocol-abuse"
@@ -115,10 +121,11 @@ export type RunConfig = Scale & {
   rootDir: string;
   fitzSourceDir: string;
   fitzImage: string | undefined;
+  upgradeFromImage: string | undefined;
   destroyerImage: string | undefined;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -302,6 +309,7 @@ export function parseArgs(argv: readonly string[], env = process.env): RunConfig
     rootDir,
     fitzSourceDir: resolve(env.FITZ_SOURCE_DIR ?? resolve(rootDir, "../fitz")),
     fitzImage: env.FITZ_IMAGE?.trim() || undefined,
+    upgradeFromImage: env.FITZ_UPGRADE_FROM_IMAGE?.trim() || undefined,
     destroyerImage: env.DESTROYER_IMAGE?.trim() || undefined,
   };
 }
@@ -356,6 +364,12 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "queue-dead-letter-fencing" ||
     value === "cold-boot-provider-outage" ||
     value === "hostile-rpc-worker" ||
+    value === "upgrade-recovery" ||
+    value === "cross-transport-recovery" ||
+    value === "outbound-blackhole" ||
+    value === "broker-pause" ||
+    value === "route-cardinality-churn" ||
+    value === "cache-and-disk-exhaustion" ||
     value === "lease-contention" ||
     value === "hot-route-canary" ||
     value === "protocol-abuse" ||

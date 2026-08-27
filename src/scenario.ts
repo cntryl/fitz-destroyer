@@ -28,6 +28,12 @@ import { runStreamGlobalRecoveryScenario } from "./orchestration/stream-global-r
 import { runQueueDeadLetterFencingScenario } from "./orchestration/queue-dead-letter-fencing.js";
 import { runColdBootProviderOutageScenario } from "./orchestration/cold-boot-provider-outage.js";
 import { runHostileRpcWorkerScenario } from "./orchestration/hostile-rpc-worker.js";
+import { runUpgradeRecoveryScenario } from "./orchestration/upgrade-recovery.js";
+import { runCrossTransportRecoveryScenario } from "./orchestration/cross-transport-recovery.js";
+import { runOutboundBlackholeScenario } from "./orchestration/outbound-blackhole.js";
+import { runBrokerPauseScenario } from "./orchestration/broker-pause.js";
+import { runRouteCardinalityChurnScenario } from "./orchestration/route-cardinality-churn.js";
+import { runCacheAndDiskExhaustionScenario } from "./orchestration/cache-and-disk-exhaustion.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -105,6 +111,9 @@ export async function runScenario(
       sampleMs: config.sampleMs,
       iterations: config.iterations,
       port: config.port,
+      ...(config.upgradeFromImage === undefined
+        ? {}
+        : { upgradeFromImage: config.upgradeFromImage }),
       ...(config.destroyerImage === undefined
         ? { fitzSourceDir: config.fitzSourceDir }
         : {
@@ -243,6 +252,18 @@ async function executeWorkload(
     await runColdBootProviderOutageScenario(stack, config, shape, artifacts);
   } else if (scenario === "hostile-rpc-worker") {
     await runHostileRpcWorkerScenario(stack, config, shape, artifacts);
+  } else if (scenario === "upgrade-recovery") {
+    await runUpgradeRecoveryScenario(stack, config, shape, artifacts);
+  } else if (scenario === "cross-transport-recovery") {
+    await runCrossTransportRecoveryScenario(stack, config, shape, artifacts);
+  } else if (scenario === "outbound-blackhole") {
+    await runOutboundBlackholeScenario(stack, config, shape, artifacts);
+  } else if (scenario === "broker-pause") {
+    await runBrokerPauseScenario(stack, config, shape, artifacts);
+  } else if (scenario === "route-cardinality-churn") {
+    await runRouteCardinalityChurnScenario(stack, config, shape, artifacts);
+  } else if (scenario === "cache-and-disk-exhaustion") {
+    await runCacheAndDiskExhaustionScenario(stack, config, shape, artifacts);
   } else if (scenario === "notice-fanout") {
     await stack.runNoticeFanout(shape);
   } else if (scenario === "queue-redelivery") {

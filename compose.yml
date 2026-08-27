@@ -27,6 +27,7 @@ services:
       - "127.0.0.1::9100"
 
   fitz:
+    image: "${FITZ_IMAGE:-fitz-destroyer-local-fitz:latest}"
     build:
       context: "${FITZ_SOURCE_DIR:-../fitz}"
       dockerfile: Dockerfile
@@ -99,6 +100,22 @@ services:
       DESTROYER_DOMAINS: "${DESTROYER_DOMAINS:-}"
       DESTROYER_REQUEST_TIMEOUT_MS: "${DESTROYER_REQUEST_TIMEOUT_MS:-10000}"
       DESTROYER_PROGRESS_INTERVAL_MS: "${DESTROYER_PROGRESS_INTERVAL_MS:-1000}"
+
+  disk-filler:
+    image: "${DESTROYER_DISK_FILLER_IMAGE:-fitz-destroyer-local-disk-filler:latest}"
+    build:
+      context: .
+      dockerfile: Dockerfile.destroyer
+    profiles:
+      - clients
+    entrypoint:
+      - /nodejs/bin/node
+    command:
+      - dist/disk-filler.js
+    user: "0:0"
+    volumes:
+      - fitz-cache:/volumes/cache
+      - sqrzl-blobs:/volumes/storage
 
 volumes:
   sqrzl-blobs:

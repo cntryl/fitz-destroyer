@@ -78,6 +78,8 @@ import {
   runHostileRpcWorker,
   type HostileRpcBehavior,
 } from "./workloads/hostile-rpc-worker.js";
+import { runRouteCardinalityChurn } from "./workloads/route-cardinality-churn.js";
+import { runExhaustionProbe } from "./workloads/exhaustion-probe.js";
 
 type WorkerMode =
   | "load"
@@ -121,7 +123,9 @@ type WorkerMode =
   | "stream-global-recovery"
   | "queue-dead-letter-fencing"
   | "hostile-rpc-worker"
-  | "hostile-rpc-caller";
+  | "hostile-rpc-caller"
+  | "route-cardinality-churn"
+  | "exhaustion-probe";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -192,9 +196,11 @@ async function main(): Promise<void> {
 }
 
 function makeClient(reconnect: boolean): Client {
+  const transport = transportEnv(process.env.DESTROYER_TRANSPORT);
+  const defaultUrl = transport === "tcp" ? "tcp://fitz:4091" : "ws://fitz:4090/ws";
   return createClient({
-    url: process.env.FITZ_URL ?? "ws://fitz:4090/ws",
-    transport: "ws",
+    url: process.env.FITZ_URL ?? defaultUrl,
+    transport,
     ...(process.env.DESTROYER_JWT === undefined
       ? {}
       : { tokenProvider: async () => requiredEnv("DESTROYER_JWT") }),
@@ -235,6 +241,12 @@ function makeClient(reconnect: boolean): Client {
       },
     },
   });
+}
+
+function transportEnv(value: string | undefined): "ws" | "tcp" {
+  if (value === undefined || value === "ws") return "ws";
+  if (value === "tcp") return "tcp";
+  throw new Error(`DESTROYER_TRANSPORT must be ws or tcp, received '${value}'`);
 }
 
 async function runLiveRole(
@@ -320,6 +332,10 @@ async function runLiveRole(
       { ...options, behavior: hostileRpcBehavior(process.env.DESTROYER_HOSTILE_RPC_BEHAVIOR) },
       log,
     );
+  } else if (liveMode === "route-cardinality-churn") {
+    await runRouteCardinalityChurn(client, options, log);
+  } else if (liveMode === "exhaustion-probe") {
+    await runExhaustionProbe(client, options, log);
   } else if (
     liveMode === "lease-contender" ||
     liveMode === "lease-owner" ||
@@ -773,7 +789,9 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "stream-global-recovery" ||
     value === "queue-dead-letter-fencing" ||
     value === "hostile-rpc-worker" ||
-    value === "hostile-rpc-caller"
+    value === "hostile-rpc-caller" ||
+    value === "route-cardinality-churn" ||
+    value === "exhaustion-probe"
   ) {
     return value;
   }

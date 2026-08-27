@@ -34,66 +34,23 @@ import {
   type BombardTotals,
 } from "./compose-evidence.js";
 import type { FaultProxyFault } from "./fault-proxy.js";
+import {
+  type ContainerState,
+  type LiveRole,
+  type RoleContainer,
+} from "./compose-model.js";
+import { executeDiskFiller, executeRecoveryJob } from "./compose-jobs.js";
+import { executeUpgradeReplacement } from "./compose-upgrade.js";
 
-export type LiveRole =
-  | "durability-verifier"
-  | "durability-writer"
-  | "lease-contender"
-  | "lease-owner"
-  | "lease-probe"
-  | "hot-route"
-  | "canary"
-  | "protocol-abuse"
-  | "notice-publisher"
-  | "notice-subscriber"
-  | "schedule-producer"
-  | "schedule-subscriber"
-  | "session-boundaries"
-  | "queue-redelivery-producer"
-  | "queue-redelivery-victim"
-  | "queue-redelivery-drainer"
-  | "rpc-caller"
-  | "rpc-worker"
-  | "rpc-stream-caller"
-  | "rpc-stream-worker"
-  | "pressure-reconciler"
-  | "queue-lifecycle-producer"
-  | "queue-lifecycle-abandoner"
-  | "queue-lifecycle-consumer"
-  | "transaction-contender"
-  | "transaction-holder"
-  | "transaction-verifier"
-  | "stream-replay-worker"
-  | "schedule-outage-producer"
-  | "schedule-outage-canceller"
-  | "schedule-outage-cleanup"
-  | "schedule-outage-subscriber"
-  | "queue-overload-producer"
-  | "queue-overload-drainer"
-  | "authorization-isolation"
-  | "stream-global-recovery"
-  | "queue-dead-letter-fencing"
-  | "hostile-rpc-worker"
-  | "hostile-rpc-caller";
-
-export type RoleContainer = {
-  id: string;
-  name: string;
-  workerId: string;
-};
-
-type ContainerState = {
-  status: string;
-  exitCode: number;
-};
-
+export type { LiveRole, RoleContainer } from "./compose-model.js";
 export class ComposeStack {
   readonly #config: RunConfig;
   readonly #project: string;
   readonly #namespace: string;
   readonly #artifacts: Artifacts;
   readonly #env: NodeJS.ProcessEnv;
-  readonly #composeFile: string;
+  readonly #composeFiles: readonly string[];
+  readonly #targetFitzImage: string;
   #jobSequence = 0;
   #metricsUrl: string | undefined;
 
@@ -107,13 +64,20 @@ export class ComposeStack {
     this.#project = project;
     this.#namespace = namespace;
     this.#artifacts = artifacts;
-    this.#composeFile = join(
+    const composeFile = join(
       config.rootDir,
       config.destroyerImage === undefined ? "compose.yml" : "compose.destroyer.yml",
     );
+    this.#composeFiles = config.scenario === "cache-and-disk-exhaustion"
+      ? [composeFile, join(config.rootDir, "compose.exhaustion.yml")]
+      : [composeFile];
+    this.#targetFitzImage = config.fitzImage ?? (config.destroyerImage === undefined
+      ? `${project}-fitz:latest`
+      : "ghcr.io/cntryl/fitz:latest");
     this.#env = {
       FITZ_SOURCE_DIR: config.fitzSourceDir,
-      ...(config.fitzImage === undefined ? {} : { FITZ_IMAGE: config.fitzImage }),
+      FITZ_IMAGE: this.#targetFitzImage,
+      DESTROYER_DISK_FILLER_IMAGE: `${project}-disk-filler:latest`,
       ...(config.destroyerImage === undefined
         ? {}
         : { DESTROYER_IMAGE: config.destroyerImage }),
@@ -139,12 +103,9 @@ export class ComposeStack {
     };
   }
 
-  get project(): string {
-    return this.#project;
-  }
-
+  get project(): string { return this.#project; }
   async preflight(): Promise<void> {
-    await access(this.#composeFile);
+    await Promise.all(this.#composeFiles.map((file) => access(file)));
     if (this.#config.destroyerImage === undefined) {
       await access(join(this.#config.fitzSourceDir, "Dockerfile"));
     }
@@ -152,7 +113,7 @@ export class ComposeStack {
     await runCommand("docker", ["compose", "version"], { cwd: this.#config.rootDir });
     await this.#artifacts.event("preflight_complete", {
       project: this.#project,
-      composeFile: this.#composeFile,
+      composeFiles: this.#composeFiles,
       ...(this.#config.destroyerImage === undefined
         ? { fitzSourceDir: this.#config.fitzSourceDir }
         : {
@@ -172,7 +133,14 @@ export class ComposeStack {
     await this.#artifacts.event("image_preparation_started", { mode });
     if (this.#config.destroyerImage === undefined) {
       await this.compose(
-        ["build", "fitz", "client", "storage-proxy", "client-proxy"],
+        [
+          "build",
+          "fitz",
+          "client",
+          "storage-proxy",
+          "client-proxy",
+          ...(this.#config.scenario === "cache-and-disk-exhaustion" ? ["disk-filler"] : []),
+        ],
         { stream: true },
       );
     } else {
@@ -185,6 +153,21 @@ export class ComposeStack {
       mode,
       elapsedMs: elapsedMs(startedAt),
     });
+    if (this.#config.scenario === "upgrade-recovery") {
+      const sourceImage = this.#config.upgradeFromImage ?? this.#targetFitzImage;
+      if (sourceImage !== this.#targetFitzImage) {
+        await runCommand("docker", ["pull", sourceImage], {
+          cwd: this.#config.rootDir,
+          stream: true,
+        });
+      }
+      this.#env.FITZ_IMAGE = sourceImage;
+      await this.#artifacts.event("upgrade_images_prepared", {
+        sourceImage,
+        targetImage: this.#targetFitzImage,
+        crossVersionRequested: this.#config.upgradeFromImage !== undefined,
+      });
+    }
   }
 
   async startCore(): Promise<void> {
@@ -256,48 +239,21 @@ export class ComposeStack {
     });
   }
 
-  async runRecoveryJob(mode: "load" | "verify", shape: WorkloadShape): Promise<void> {
-    const startedAt = performance.now();
-    await this.#artifacts.event("client_job_started", { mode });
-    const result = await this.compose(
-      [
-        "run",
-        "--rm",
-        "-T",
-        "--no-deps",
-        "-e",
-        `DESTROYER_MODE=${mode}`,
-        "-e",
-        `DESTROYER_NAMESPACE=${shape.namespace}`,
-        "-e",
-        `DESTROYER_SEED=${shape.seed}`,
-        "-e",
-        `DESTROYER_RESOURCES=${shape.resources}`,
-        "-e",
-        `DESTROYER_ENTRIES=${shape.entriesPerResource}`,
-        "-e",
-        `DESTROYER_PAYLOAD_BYTES=${shape.payloadBytes}`,
-        "-e",
-        `DESTROYER_STARTUP_TIMEOUT_MS=${this.#config.startupTimeoutMs}`,
-        "client",
-      ],
-      { stream: true },
-    );
+  async runRecoveryJob(
+    mode: "load" | "verify",
+    shape: WorkloadShape,
+    transport: "ws" | "tcp" = "ws",
+  ): Promise<void> {
     this.#jobSequence += 1;
-    await this.#artifacts.write(
-      `client-job-${this.#jobSequence.toString().padStart(2, "0")}-${mode}.log`,
-      `${result.stdout}${result.stderr}`,
-    );
-    const complete = parseJsonRecords(`${result.stdout}\n${result.stderr}`)
-      .filter((record) => record.event === "job_complete" && record.mode === mode)
-      .at(-1);
-    if (complete === undefined) throw new Error(`${mode} client job omitted completion evidence`);
-    await this.#artifacts.event("client_job_complete", {
+    await executeRecoveryJob(
+      (args, options) => this.compose(args, options),
+      this.#artifacts,
+      this.#config,
+      this.#jobSequence,
       mode,
-      entries: numericValue(complete.entries, `${mode} client job entries`),
-      workerElapsedMs: numericValue(complete.elapsedMs, `${mode} client job elapsedMs`),
-      elapsedMs: elapsedMs(startedAt),
-    });
+      shape,
+      transport,
+    );
   }
 
   async runNoticeFanout(
@@ -453,6 +409,57 @@ export class ComposeStack {
     await this.#artifacts.event("fitz_sigkill_started");
     await this.killAndRemoveService("fitz", "fitz-sigkill");
     await this.#artifacts.event("fitz_sigkill_complete");
+  }
+
+  async pauseFitz(): Promise<void> {
+    await this.#artifacts.event("fitz_pause_started");
+    await this.compose(["pause", "fitz"], { stream: true });
+    await this.#artifacts.event("fitz_pause_complete");
+  }
+
+  async unpauseFitz(): Promise<void> {
+    await this.compose(["unpause", "fitz"], { stream: true, allowFailure: true });
+    await this.#artifacts.event("fitz_unpaused");
+  }
+
+  async replaceFitzForUpgrade(): Promise<{
+    sourceImageId: string;
+    targetImageId: string;
+    crossVersion: boolean;
+  }> {
+    return executeUpgradeReplacement(
+      (args, options) => this.compose(args, options),
+      () => this.stopFitz(),
+      () => this.waitReady(),
+      this.#artifacts,
+      this.#config,
+      this.#env,
+      this.#targetFitzImage,
+      this.#project,
+    );
+  }
+
+  async recycleFitzAfterFault(): Promise<void> {
+    await this.killAndRemoveService("fitz", "fitz-after-exhaustion", true);
+    await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
+    await this.waitReady();
+  }
+
+  async recycleStorageAfterFault(): Promise<void> {
+    await this.killAndRemoveService("sqrzl", "sqrzl-after-exhaustion", true);
+    await this.compose(["up", "-d", "--no-deps", "sqrzl"], { stream: true });
+    await this.killAndRemoveService("fitz", "fitz-after-storage-exhaustion", true);
+    await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
+    await this.waitReady();
+  }
+
+  async runDiskFiller(target: "cache" | "storage", action: "fill" | "remove"): Promise<number> {
+    return executeDiskFiller(
+      (args, options) => this.compose(args, options),
+      this.#artifacts,
+      target,
+      action,
+    );
   }
 
   async restartFitz(): Promise<void> {
@@ -646,7 +653,8 @@ export class ComposeStack {
   }
 
   cleanupCommand(): string {
-    return `docker compose -f ${join(this.#config.rootDir, "compose.yml")} --project-name ${this.#project} --profile clients down --volumes --remove-orphans`;
+    const files = this.#composeFiles.map((file) => `-f ${file}`).join(" ");
+    return `docker compose ${files} --project-name ${this.#project} --profile clients down --volumes --remove-orphans`;
   }
 
   async waitForLiveDomainQuiescence(
@@ -970,8 +978,7 @@ export class ComposeStack {
       "docker",
       [
         "compose",
-        "-f",
-        this.#composeFile,
+        ...this.#composeFiles.flatMap((file) => ["-f", file]),
         "--project-name",
         this.#project,
         "--profile",
