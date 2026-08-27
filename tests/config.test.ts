@@ -147,6 +147,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "route-family-isolation-matrix",
     "rpc-response-state-conformance",
     "response-envelope-boundaries",
+    "lease-waiter-disconnect-races",
   ];
 
   // Act

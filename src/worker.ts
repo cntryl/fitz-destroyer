@@ -104,6 +104,7 @@ import {
 } from "./workloads/route-family-isolation-matrix.js";
 import { runRpcResponseStateConformance } from "./workloads/rpc-response-state-conformance.js";
 import { runResponseEnvelopeBoundaries } from "./workloads/response-envelope-boundaries.js";
+import { runLeaseWaiterDisconnectRaces } from "./workloads/lease-waiter-disconnect-races.js";
 
 type WorkerMode =
   | "load"
@@ -161,7 +162,8 @@ type WorkerMode =
   | "control-lane-cleanup-under-saturation"
   | "route-family-isolation-matrix"
   | "rpc-response-state-conformance"
-  | "response-envelope-boundaries";
+  | "response-envelope-boundaries"
+  | "lease-waiter-disconnect-races";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -403,6 +405,8 @@ async function runLiveRole(
     );
   } else if (liveMode === "response-envelope-boundaries") {
     await runResponseEnvelopeBoundaries(client, options, log);
+  } else if (liveMode === "lease-waiter-disconnect-races") {
+    await runLeaseWaiterDisconnectRaces(client, { ...options, url: process.env.DESTROYER_LEASE_RACE_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
   } else if (
@@ -920,6 +924,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "route-family-isolation-matrix" ||
     value === "rpc-response-state-conformance" ||
     value === "response-envelope-boundaries"
+    || value === "lease-waiter-disconnect-races"
   ) {
     return value;
   }

@@ -118,6 +118,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "response_envelope_boundaries_complete",
     fields: [["domains", "Boundary domains"], ["exactFit", "Exact-fit responses"], ["oneOverRejected", "One-over rejections"], ["boundedAggregates", "Bounded aggregate responses"], ["canaryOperations", "Canary operations"]],
   },
+  "lease-waiter-disconnect-races": {
+    event: "lease_waiter_disconnect_races_complete",
+    fields: [["rounds", "Race rounds"], ["waitersQueued", "Waiters queued"], ["waitersDisconnected", "Waiters disconnected"], ["replacementAcquisitions", "Replacement acquisitions"], ["ghostAcquisitions", "Ghost acquisitions"], ["fencingRegressions", "Fencing regressions"]],
+  },
 };
 
 export function completionMetricsForScenario(

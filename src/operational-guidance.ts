@@ -828,6 +828,7 @@ function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly E
     "route-family-isolation-matrix": "route_family_isolation_matrix_complete",
     "rpc-response-state-conformance": "rpc_response_state_conformance_complete",
     "response-envelope-boundaries": "response_envelope_boundaries_complete",
+    "lease-waiter-disconnect-races": "lease_waiter_disconnect_races_complete",
     chaos: "chaos_complete",
     "domain-pressure": "pressure_complete",
     soak: "pressure_complete",

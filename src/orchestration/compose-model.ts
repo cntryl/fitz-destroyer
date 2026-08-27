@@ -51,7 +51,8 @@ export type LiveRole =
   | "control-lane-cleanup-under-saturation"
   | "route-family-isolation-matrix"
   | "rpc-response-state-conformance"
-  | "response-envelope-boundaries";
+  | "response-envelope-boundaries"
+  | "lease-waiter-disconnect-races";
 
 export type RoleContainer = {
   id: string;

@@ -138,6 +138,10 @@ Notice delivery, and RPC response paths at their bounded response envelopes.
 Oversized aggregate results must paginate or reject with a typed error, one-over
 payloads must reject, and a small follow-up operation must succeed in every domain.
 
+`lease-waiter-disconnect-races` queues four Lease waiters per round, disconnects
+them around owner release, and requires zero ghost acquisitions, zero pending
+waiters, monotonic fencing, and successful same-route replacement ownership.
+
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through
 small pages. It requires exact global offsets, resource-local offsets, routes,

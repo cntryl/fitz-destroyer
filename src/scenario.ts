@@ -46,6 +46,7 @@ import { runControlLaneCleanupUnderSaturationScenario } from "./orchestration/co
 import { runRouteFamilyIsolationMatrixScenario } from "./orchestration/route-family-isolation-matrix.js";
 import { runRpcResponseStateConformanceScenario } from "./orchestration/rpc-response-state-conformance.js";
 import { runResponseEnvelopeBoundariesScenario } from "./orchestration/response-envelope-boundaries.js";
+import { runLeaseWaiterDisconnectRacesScenario } from "./orchestration/lease-waiter-disconnect-races.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -332,6 +333,8 @@ async function executeWorkload(
     await runRpcResponseStateConformanceScenario(stack, config, shape, artifacts);
   } else if (scenario === "response-envelope-boundaries") {
     await runResponseEnvelopeBoundariesScenario(stack, config, shape, artifacts);
+  } else if (scenario === "lease-waiter-disconnect-races") {
+    await runLeaseWaiterDisconnectRacesScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

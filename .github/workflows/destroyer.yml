@@ -106,6 +106,7 @@ jobs:
           - route-family-isolation-matrix
           - rpc-response-state-conformance
           - response-envelope-boundaries
+          - lease-waiter-disconnect-races
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7

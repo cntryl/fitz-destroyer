@@ -52,6 +52,7 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "route-family-isolation-matrix",
   "rpc-response-state-conformance",
   "response-envelope-boundaries",
+  "lease-waiter-disconnect-races",
 ];
 
 export type SuiteSummary = {
