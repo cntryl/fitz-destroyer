@@ -49,7 +49,8 @@ export type LiveRole =
   | "slow-recipient-publisher"
   | "shutdown-reconnect-cleanup-storm"
   | "control-lane-cleanup-under-saturation"
-  | "route-family-isolation-matrix";
+  | "route-family-isolation-matrix"
+  | "rpc-response-state-conformance";
 
 export type RoleContainer = {
   id: string;

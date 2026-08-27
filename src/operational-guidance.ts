@@ -826,6 +826,7 @@ function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly E
     "shutdown-reconnect-cleanup-storm": "shutdown_reconnect_cleanup_storm_complete",
     "control-lane-cleanup-under-saturation": "control_lane_cleanup_under_saturation_complete",
     "route-family-isolation-matrix": "route_family_isolation_matrix_complete",
+    "rpc-response-state-conformance": "rpc_response_state_conformance_complete",
     chaos: "chaos_complete",
     "domain-pressure": "pressure_complete",
     soak: "pressure_complete",

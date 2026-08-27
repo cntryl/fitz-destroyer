@@ -104,6 +104,7 @@ jobs:
           - shutdown-reconnect-cleanup-storm
           - control-lane-cleanup-under-saturation
           - route-family-isolation-matrix
+          - rpc-response-state-conformance
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7

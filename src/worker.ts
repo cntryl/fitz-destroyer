@@ -102,6 +102,7 @@ import {
   parseRouteFamilyIsolationAction,
   runRouteFamilyIsolationMatrix,
 } from "./workloads/route-family-isolation-matrix.js";
+import { runRpcResponseStateConformance } from "./workloads/rpc-response-state-conformance.js";
 
 type WorkerMode =
   | "load"
@@ -157,7 +158,8 @@ type WorkerMode =
   | "slow-recipient-publisher"
   | "shutdown-reconnect-cleanup-storm"
   | "control-lane-cleanup-under-saturation"
-  | "route-family-isolation-matrix";
+  | "route-family-isolation-matrix"
+  | "rpc-response-state-conformance";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -388,6 +390,15 @@ async function runLiveRole(
     );
   } else if (liveMode === "route-cardinality-churn") {
     await runRouteCardinalityChurn(client, options, log);
+  } else if (liveMode === "rpc-response-state-conformance") {
+    await runRpcResponseStateConformance(
+      client,
+      {
+        ...options,
+        url: process.env.DESTROYER_RPC_STATE_URL ?? "ws://fitz:4090/ws",
+      },
+      log,
+    );
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
   } else if (
@@ -902,7 +913,8 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "slow-recipient-publisher" ||
     value === "shutdown-reconnect-cleanup-storm" ||
     value === "control-lane-cleanup-under-saturation" ||
-    value === "route-family-isolation-matrix"
+    value === "route-family-isolation-matrix" ||
+    value === "rpc-response-state-conformance"
   ) {
     return value;
   }

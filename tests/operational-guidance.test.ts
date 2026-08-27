@@ -345,6 +345,7 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "shutdown-reconnect-cleanup-storm") return [{ event: "shutdown_reconnect_cleanup_storm_complete", cycles: 2, reconnects: 8, staleHandleRejections: 32, elapsedMs: 1_000 }];
   if (scenario === "control-lane-cleanup-under-saturation") return [{ event: "control_lane_cleanup_under_saturation_complete", targets: 4, canaryOperationsPerDomain: 1, elapsedMs: 1_000 }];
   if (scenario === "route-family-isolation-matrix") return [{ event: "route_family_isolation_matrix_complete", identities: 2, domains: 7, holderDomainChecks: 14, probeDomainChecks: 14, crossFamilyDeliveries: 0, elapsedMs: 1_000 }];
+  if (scenario === "rpc-response-state-conformance") return [{ event: "rpc_response_state_conformance_complete", cases: 5, callersTerminated: 4, duplicateCallerTerminals: 0, unknownCorrelationRejected: 1, duplicateTerminalRejected: 1, postCancelResponsesObserved: 1, postDisconnectRejected: 1, healthyCalls: 4, healthyFailures: 0, elapsedMs: 1_000 }];
   return [];
 }
 

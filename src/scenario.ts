@@ -44,6 +44,7 @@ import { runSaturatedSlowRecipientIsolationScenario } from "./orchestration/satu
 import { runShutdownReconnectCleanupStormScenario } from "./orchestration/shutdown-reconnect-cleanup-storm.js";
 import { runControlLaneCleanupUnderSaturationScenario } from "./orchestration/control-lane-cleanup-under-saturation.js";
 import { runRouteFamilyIsolationMatrixScenario } from "./orchestration/route-family-isolation-matrix.js";
+import { runRpcResponseStateConformanceScenario } from "./orchestration/rpc-response-state-conformance.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -326,6 +327,8 @@ async function executeWorkload(
     await runControlLaneCleanupUnderSaturationScenario(stack, config, shape, artifacts);
   } else if (scenario === "route-family-isolation-matrix") {
     await runRouteFamilyIsolationMatrixScenario(stack, config, shape, artifacts);
+  } else if (scenario === "rpc-response-state-conformance") {
+    await runRpcResponseStateConformanceScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

@@ -110,6 +110,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "route_family_isolation_matrix_complete",
     fields: [["identities", "Route families"], ["domains", "Isolated domains"], ["holderDomainChecks", "Holder domain checks"], ["probeDomainChecks", "Probe domain checks"], ["crossFamilyDeliveries", "Cross-family deliveries"]],
   },
+  "rpc-response-state-conformance": {
+    event: "rpc_response_state_conformance_complete",
+    fields: [["cases", "Response-state cases"], ["callersTerminated", "Callers terminated"], ["healthyCalls", "Healthy follow-up calls"], ["healthyFailures", "Healthy follow-up failures"]],
+  },
 };
 
 export function completionMetricsForScenario(

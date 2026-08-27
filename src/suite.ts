@@ -50,6 +50,7 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "shutdown-reconnect-cleanup-storm",
   "control-lane-cleanup-under-saturation",
   "route-family-isolation-matrix",
+  "rpc-response-state-conformance",
 ];
 
 export type SuiteSummary = {
