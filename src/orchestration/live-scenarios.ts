@@ -202,6 +202,7 @@ export async function runConnectionStormScenario(
   });
 
   for (let wave = 0; wave < waves; wave += 1) {
+    const waveStartedAt = performance.now();
     const waveNumber = wave + 1;
     const operations = baseOperations + (wave < extraOperations ? 1 : 0);
     const runLabel = `connection-storm-wave-${waveNumber.toString().padStart(3, "0")}`;
@@ -238,6 +239,7 @@ export async function runConnectionStormScenario(
       wave: waveNumber,
       waves,
       cleanup,
+      elapsedMs: elapsedMs(waveStartedAt),
     });
   }
 

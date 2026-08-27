@@ -609,7 +609,12 @@ async function observeStage<T>(
     metrics.succeeded += 1;
     return result;
   } catch (error) {
-    recordStageError(metrics, error, durableOutcomeCanBeAmbiguous && isAmbiguousDurableError(error));
+    recordStageError(
+      metrics,
+      error,
+      durableOutcomeCanBeAmbiguous && isAmbiguousDurableError(error),
+      shutdown.signal.aborted,
+    );
     throw error;
   } finally {
     recordStageLatency(metrics, performance.now() - startedAt);

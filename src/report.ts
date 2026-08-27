@@ -4,11 +4,13 @@ import type {
   FailureClassification,
   ScenarioResult,
 } from "./scenario.js";
+import { emptyGuidance, type OperationalGuidance } from "./operational-guidance.js";
 
 export type DestroyerReportEntry = {
   scenario: ConcreteScenario;
   verdict: "passed" | "failed" | "missing";
   durationMs: number | null;
+  workloadDurationMs: number | null;
   failureClassification: FailureClassification | "missing" | null;
   cleanupState: ScenarioResult["cleanupState"] | null;
   runId: string | null;
@@ -45,6 +47,7 @@ export type ScenarioReportAnalysis = {
   observations: readonly ReportObservation[];
   warnings: readonly ReportWarning[];
   brokerSummary: Readonly<Record<string, number | null>> | null;
+  operationalGuidance: OperationalGuidance;
 };
 
 export type AnalyzedScenarioResult = ScenarioResult & {
@@ -52,7 +55,7 @@ export type AnalyzedScenarioResult = ScenarioResult & {
 };
 
 export type DestroyerReport = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   generatedAt: string;
   verdict: "passed" | "failed";
   analysisResult: string;
@@ -98,11 +101,12 @@ export function buildDestroyerReport(
         scenario,
         verdict: "missing",
         durationMs: null,
+        workloadDurationMs: null,
         failureClassification: "missing",
         cleanupState: null,
         runId: null,
         project: null,
-        analysis: emptyAnalysis(),
+        analysis: emptyAnalysis(null, "Scenario artifact did not contain a structured summary."),
         error: "Scenario artifact did not contain a structured summary",
       };
     }
@@ -111,11 +115,12 @@ export function buildDestroyerReport(
         scenario,
         verdict: "failed",
         durationMs: null,
+        workloadDurationMs: null,
         failureClassification: "setup",
         cleanupState: null,
         runId: null,
         project: null,
-        analysis: emptyAnalysis(),
+        analysis: emptyAnalysis(null, "Duplicate scenario summaries prevented operational extraction."),
         error: `Expected one scenario summary, found ${matches.length}`,
       };
     }
@@ -124,11 +129,13 @@ export function buildDestroyerReport(
       scenario,
       verdict: result.verdict,
       durationMs: result.durationMs,
+      workloadDurationMs: result.reportAnalysis?.operationalGuidance.workloadDurationMs ??
+        result.workloadDurationMs ?? null,
       failureClassification: result.failureClassification,
       cleanupState: result.cleanupState,
       runId: result.runId,
       project: result.project,
-      analysis: result.reportAnalysis ?? emptyAnalysis(),
+      analysis: result.reportAnalysis ?? emptyAnalysis(result.workloadDurationMs ?? null),
       ...(result.error === undefined ? {} : { error: result.error }),
       ...(result.cleanupError === undefined ? {} : { cleanupError: result.cleanupError }),
     };
@@ -173,7 +180,7 @@ export function buildDestroyerReport(
     }
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt,
     verdict,
     analysisResult,
@@ -227,6 +234,8 @@ export function renderDestroyerReport(report: DestroyerReport): string {
     `| Scenario summaries | ${failures.length === 0 ? "✅ PASS" : "❌ FAIL"} | ${report.totals.passed} passed, ${report.totals.failed} failed, ${report.totals.missing} missing |`,
     "",
     timingSummary(report),
+    "",
+    ...operationalGuidanceLines(report),
   ];
 
   if (warnings.length > 0) {
@@ -424,6 +433,73 @@ function timingSummary(report: DestroyerReport): string {
   return `Recorded scenario runtime was ${durationLabel(report.timing.recordedTotalMs)} across parallel jobs; the slowest scenario was \`${report.timing.slowestScenario}\` at ${durationLabel(report.timing.slowestDurationMs)}. Timings are diagnostic, not correctness gates.`;
 }
 
+function operationalGuidanceLines(report: DestroyerReport): string[] {
+  const lines = [
+    "## Operational guidance",
+    "",
+    "Observed rates describe this run only; they are not capacity claims or correctness gates. `cntryl-stress` remains Fitz's authoritative benchmark suite.",
+    "",
+    "| Scenario | Workload duration | Headline metric | Completion semantics | Guidance |",
+    "| --- | ---: | --- | --- | --- |",
+    ...report.results.map((result) => {
+      const guidance = result.analysis.operationalGuidance;
+      return `| ${result.scenario} | ${durationLabel(guidance.workloadDurationMs)} | ${headlineMetric(guidance)} | ${completionLabel(guidance)} | ${guidanceLabel(guidance)} |`;
+    }),
+  ];
+  for (const result of report.results) {
+    const guidance = result.analysis.operationalGuidance;
+    if (guidance.pressureDomains.length === 0) continue;
+    lines.push(
+      "",
+      `### ${result.scenario} pressure detail`,
+      "",
+      `Guidance: ${guidanceLabel(guidance)}.`,
+      "",
+      "| Domain | Completion semantics | Completed operations | Observed ops/s | Errors | Ambiguous | Shutdown cancellations | Slowest stage |",
+      "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+      ...guidance.pressureDomains.map((domain) =>
+        `| ${domain.domain} | ${tableCell(domain.completionSemantics)} | ${domain.completedOperations} | ${domain.observedOperationsPerSecond.toFixed(2)} | ${domain.errors} | ${domain.ambiguousOutcomes} | ${domain.expectedCancellations} | ${tableCell(domain.slowestStage)} |`
+      ),
+      "",
+      "| Domain | Stage | Mean | p50 | p95 | p99 | Max |",
+      "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+      ...guidance.pressureDomains.flatMap((domain) => domain.stages.map((stage) =>
+        `| ${domain.domain} | ${tableCell(stage.stage)} | ${milliseconds(stage.latency.meanMs)} | ${milliseconds(stage.latency.p50Ms)} | ${milliseconds(stage.latency.p95Ms)} | ${milliseconds(stage.latency.p99Ms)} | ${milliseconds(stage.latency.maxMs)} |`
+      )),
+    );
+  }
+  return lines;
+}
+
+function headlineMetric(guidance: OperationalGuidance): string {
+  const rates = guidance.rates.slice(0, 2).map((metric) =>
+    `${tableCell(metric.label)} ${metric.valuePerSecond.toFixed(2)} ${tableCell(metric.unit)}`
+  );
+  if (rates.length > 0) return rates.join("<br>");
+  const count = guidance.counts[0];
+  if (count !== undefined) return `${tableCell(count.label)} ${count.value} ${tableCell(count.unit)}`;
+  const recovery = guidance.recoveries[0];
+  if (recovery !== undefined) return `${tableCell(recovery.label)} ${durationLabel(recovery.durationMs)}`;
+  return "not available";
+}
+
+function completionLabel(guidance: OperationalGuidance): string {
+  const values = [...new Set(guidance.completionSemantics.map(({ label }) => label))].slice(0, 2);
+  return values.length === 0 ? "not available" : values.map(tableCell).join("<br>");
+}
+
+function guidanceLabel(guidance: OperationalGuidance): string {
+  const reasons = guidance.rating.reasons.map(tableCell).join("<br>");
+  if (guidance.rating.value === "clear") return `clear — ${reasons}`;
+  if (guidance.rating.value === "watch") return `watch — ${reasons}`;
+  if (guidance.rating.value === "constrained") return `constrained — ${reasons}`;
+  return `not rated — ${reasons}`;
+}
+
+function milliseconds(value: number): string {
+  return `${value.toFixed(2)} ms`;
+}
+
 function evidenceLabel(result: DestroyerReportEntry, run: DestroyerReportRun): string {
   const artifactName = run.attempt === null ? null : `scenario-${result.scenario}-${run.attempt}`;
   const artifact = artifactName === null
@@ -515,6 +591,14 @@ function escapeHtml(value: string): string {
   return value.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;");
 }
 
-function emptyAnalysis(): ScenarioReportAnalysis {
-  return { observations: [], warnings: [], brokerSummary: null };
+function emptyAnalysis(
+  workloadDurationMs: number | null,
+  reason = "Operational artifact analysis was unavailable.",
+): ScenarioReportAnalysis {
+  return {
+    observations: [],
+    warnings: [],
+    brokerSummary: null,
+    operationalGuidance: emptyGuidance(workloadDurationMs, reason),
+  };
 }

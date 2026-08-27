@@ -29,6 +29,9 @@ export type ScenarioResult = {
   scenario: ConcreteScenario;
   verdict: "passed" | "failed";
   durationMs: number;
+  workloadStartedAt?: string | null;
+  workloadCompletedAt?: string | null;
+  workloadDurationMs?: number | null;
   artifactPath: string;
   failureClassification: FailureClassification | null;
   cleanupState: CleanupState;
@@ -65,6 +68,10 @@ export async function runScenario(
   let cleanupError: string | undefined;
   let cleanupState: CleanupState = "preserved";
   let phase: "setup" | "workload" = "setup";
+  let workloadStartedAt: string | null = null;
+  let workloadCompletedAt: string | null = null;
+  let workloadDurationMs: number | null = null;
+  let workloadStarted = 0;
 
   await artifacts.event("scenario_started", {
     scenario,
@@ -104,82 +111,33 @@ export async function runScenario(
     await stack.prepareImages();
     await stack.startCore();
     phase = "workload";
-
-    if (scenario === "clean-restart") {
-      await stack.runRecoveryJob("load", shape);
-      await stack.gracefulRestartFitz();
-      await stack.runRecoveryJob("verify", shape);
-      await stack.gracefulRestartFitz();
-      await stack.runRecoveryJob("verify", shape);
-      await stack.stopFitz();
-    } else if (scenario === "cache-loss") {
-      await stack.runRecoveryJob("load", shape);
-      await stack.discardFitzCacheAndRestart();
-      await stack.runRecoveryJob("verify", shape);
-      await stack.gracefulRestartFitz();
-      await stack.runRecoveryJob("verify", shape);
-      await stack.stopFitz();
-    } else if (scenario === "durability-crash-cuts") {
-      await runDurabilityCrashCutsScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "notice-fanout") {
-      await stack.runNoticeFanout(shape);
-      await stack.stopFitz();
-    } else if (scenario === "queue-redelivery") {
-      await runQueueRedeliveryScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "lease-contention") {
-      await runLeaseContentionScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "hot-route-canary") {
-      await runHotRouteCanaryScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "protocol-abuse") {
-      await runProtocolAbuseScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "schedule-delivery") {
-      await runScheduleDelivery(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "session-boundaries") {
-      await runSessionBoundariesScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "rpc-pressure") {
-      await stack.runRpcPressure(shape);
-      await stack.stopFitz();
-    } else if (scenario === "rpc-stream-hose") {
-      await runRpcStreamHose(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "connection-storm") {
-      await stack.runConnectionStorm(shape);
-      await stack.stopFitz();
-    } else if (scenario === "domain-pressure" || scenario === "soak") {
-      await runPressureScenario(stack, config, shape, artifacts, scenario);
-      await stack.stopFitz();
-    } else if (scenario === "storage-faults") {
-      await runStorageFaultsScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "queue-lifecycle") {
-      await runQueueLifecycleScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "transaction-contention") {
-      await runTransactionContentionScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "stream-replay") {
-      await runStreamReplayScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "schedule-outage") {
-      await runScheduleOutageScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "live-churn") {
-      await runLiveChurnScenario(stack, config, shape, artifacts);
-      await stack.stopFitz();
-    } else if (scenario === "chaos") {
-      await runChaos(stack, config);
-    } else {
-      throw new Error(`Scenario ${scenario} is not implemented`);
-    }
+    workloadStartedAt = new Date().toISOString();
+    workloadStarted = performance.now();
+    await artifacts.event("workload_started", { scenario, startedAt: workloadStartedAt });
+    await executeWorkload(scenario, stack, config, shape, artifacts);
+    workloadDurationMs = Math.round(performance.now() - workloadStarted);
+    workloadCompletedAt = new Date().toISOString();
+    await artifacts.event("workload_complete", {
+      scenario,
+      outcome: "passed",
+      startedAt: workloadStartedAt,
+      completedAt: workloadCompletedAt,
+      elapsedMs: workloadDurationMs,
+    });
+    await stack.stopFitz();
     verdict = "passed";
   } catch (error) {
+    if (workloadStartedAt !== null && workloadCompletedAt === null) {
+      workloadDurationMs = Math.round(performance.now() - workloadStarted);
+      workloadCompletedAt = new Date().toISOString();
+      await artifacts.event("workload_complete", {
+        scenario,
+        outcome: "failed",
+        startedAt: workloadStartedAt,
+        completedAt: workloadCompletedAt,
+        elapsedMs: workloadDurationMs,
+      });
+    }
     failureMessage = errorMessage(error);
     failureClassification = classifyFailure(error, phase);
     await artifacts.event("scenario_failed", {
@@ -218,6 +176,9 @@ export async function runScenario(
       project,
       verdict,
       durationMs: Math.round(performance.now() - startedAt),
+      workloadStartedAt,
+      workloadCompletedAt,
+      workloadDurationMs,
       artifactPath: artifacts.directory,
       failureClassification,
       cleanupState,
@@ -234,33 +195,117 @@ export async function runScenario(
   }
 }
 
-async function runChaos(stack: ComposeStack, config: RunConfig): Promise<void> {
+async function executeWorkload(
+  scenario: ConcreteScenario,
+  stack: ComposeStack,
+  config: RunConfig,
+  shape: WorkloadShape,
+  artifacts: Artifacts,
+): Promise<void> {
+  if (scenario === "clean-restart") {
+    await stack.runRecoveryJob("load", shape);
+    await stack.gracefulRestartFitz();
+    await stack.runRecoveryJob("verify", shape);
+    await stack.gracefulRestartFitz();
+    await stack.runRecoveryJob("verify", shape);
+  } else if (scenario === "cache-loss") {
+    await stack.runRecoveryJob("load", shape);
+    await stack.discardFitzCacheAndRestart();
+    await stack.runRecoveryJob("verify", shape);
+    await stack.gracefulRestartFitz();
+    await stack.runRecoveryJob("verify", shape);
+  } else if (scenario === "durability-crash-cuts") {
+    await runDurabilityCrashCutsScenario(stack, config, shape, artifacts);
+  } else if (scenario === "notice-fanout") {
+    await stack.runNoticeFanout(shape);
+  } else if (scenario === "queue-redelivery") {
+    await runQueueRedeliveryScenario(stack, config, shape, artifacts);
+  } else if (scenario === "lease-contention") {
+    await runLeaseContentionScenario(stack, config, shape, artifacts);
+  } else if (scenario === "hot-route-canary") {
+    await runHotRouteCanaryScenario(stack, config, shape, artifacts);
+  } else if (scenario === "protocol-abuse") {
+    await runProtocolAbuseScenario(stack, config, shape, artifacts);
+  } else if (scenario === "schedule-delivery") {
+    await runScheduleDelivery(stack, config, shape, artifacts);
+  } else if (scenario === "session-boundaries") {
+    await runSessionBoundariesScenario(stack, config, shape, artifacts);
+  } else if (scenario === "rpc-pressure") {
+    await stack.runRpcPressure(shape);
+  } else if (scenario === "rpc-stream-hose") {
+    await runRpcStreamHose(stack, config, shape, artifacts);
+  } else if (scenario === "connection-storm") {
+    await stack.runConnectionStorm(shape);
+  } else if (scenario === "domain-pressure" || scenario === "soak") {
+    await runPressureScenario(stack, config, shape, artifacts, scenario);
+  } else if (scenario === "storage-faults") {
+    await runStorageFaultsScenario(stack, config, shape, artifacts);
+  } else if (scenario === "queue-lifecycle") {
+    await runQueueLifecycleScenario(stack, config, shape, artifacts);
+  } else if (scenario === "transaction-contention") {
+    await runTransactionContentionScenario(stack, config, shape, artifacts);
+  } else if (scenario === "stream-replay") {
+    await runStreamReplayScenario(stack, config, shape, artifacts);
+  } else if (scenario === "schedule-outage") {
+    await runScheduleOutageScenario(stack, config, shape, artifacts);
+  } else if (scenario === "live-churn") {
+    await runLiveChurnScenario(stack, config, shape, artifacts);
+  } else if (scenario === "chaos") {
+    await runChaos(stack, config, artifacts);
+  } else {
+    throw new Error(`Scenario ${scenario} is not implemented`);
+  }
+}
+
+async function runChaos(stack: ComposeStack, config: RunConfig, artifacts: Artifacts): Promise<void> {
   const replicas = config.clientReplicas;
+  const recoveries: Array<{ fault: string; elapsedMs: number }> = [];
+  const startedAt = performance.now();
 
   let since = new Date();
   await stack.startClients(replicas);
   await stack.waitForAllClientDomains(since, replicas);
   await sleep(config.phaseMs);
 
+  let faultStarted = performance.now();
   await stack.killFitz();
   await stack.restartFitz();
   await stack.startClients(replicas);
   since = await freshProgressMarker();
   await stack.waitForAllClientDomains(since, replicas);
+  recoveries.push(await recordChaosRecovery(artifacts, "fitz-sigkill", faultStarted));
   await sleep(config.phaseMs);
 
+  faultStarted = performance.now();
   await stack.killOneClientAndRestore(replicas);
   since = await freshProgressMarker();
   await stack.waitForAllClientDomains(since, replicas);
+  recoveries.push(await recordChaosRecovery(artifacts, "client-sigkill", faultStarted));
   await sleep(config.phaseMs);
 
+  faultStarted = performance.now();
   await stack.killSqrzlAndRestore();
   await stack.replaceClients(replicas);
   since = await freshProgressMarker();
   await stack.waitForAllClientDomains(since, replicas);
+  recoveries.push(await recordChaosRecovery(artifacts, "sqrzl-sigkill", faultStarted));
 
   await stack.stopClients();
-  await stack.stopFitz();
+  await artifacts.event("chaos_complete", {
+    recoveries,
+    iterations: recoveries.length,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
+}
+
+async function recordChaosRecovery(
+  artifacts: Artifacts,
+  fault: string,
+  startedAt: number,
+): Promise<{ fault: string; elapsedMs: number }> {
+  const recovery = { fault, elapsedMs: Math.round(performance.now() - startedAt) };
+  await artifacts.event("chaos_fault_recovery_complete", recovery);
+  return recovery;
 }
 
 function createRunId(scenario: ConcreteScenario): string {

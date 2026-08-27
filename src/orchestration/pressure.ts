@@ -3,6 +3,7 @@ import {
   LATENCY_BUCKET_UPPER_MS,
   diagnosticWarnings,
   latencySummary,
+  mergeLatencyHistograms,
   reconcileQueueOutcomes,
   type LatencyHistogram,
   type NormalizedErrorClass,
@@ -53,6 +54,7 @@ export type PressureEvidence = {
     finalRpcPending: number;
     ingressDispatchTimeoutsDelta: number;
     routerBackpressureDelta: number;
+    routerHighLaneBackpressureDelta: number;
   };
   warnings: readonly PressureWarning[];
   assertionFailures: readonly string[];
@@ -65,6 +67,7 @@ export async function runPressureScenario(
   artifacts: Artifacts,
   scenario: "domain-pressure" | "soak",
 ): Promise<void> {
+  const startedAt = performance.now();
   const requestedDurationMs = scenario === "soak" ? config.durationMs : config.phaseMs;
   await artifacts.event("pressure_started", {
     scenario,
@@ -190,6 +193,7 @@ export async function runPressureScenario(
     clients: clients.length,
     warnings: warnings.length,
     assertionFailures: assertionFailures.length,
+    elapsedMs: Math.round(performance.now() - startedAt),
   });
   if (assertionFailures.length > 0) {
     throw new Error(`Pressure assertions failed: ${assertionFailures.join("; ")}`);
@@ -388,6 +392,10 @@ function summarizeBrokerSnapshots(samples: readonly PressureBrokerSample[]): Pre
       first?.router.routerBackpressureTotal,
       final?.router.routerBackpressureTotal,
     ),
+    routerHighLaneBackpressureDelta: counterDelta(
+      first?.router.routerHighLaneBackpressureTotal,
+      final?.router.routerHighLaneBackpressureTotal,
+    ),
   };
 }
 
@@ -407,11 +415,18 @@ function parseStage(value: unknown, label: string): EvidenceStage {
       error: stringValue(item.error, `${label} error sample error`),
     };
   });
+  const shutdownCancellations = record.expectedShutdownCancellations === undefined
+    ? { failed: 0, ambiguous: 0 }
+    : objectValue(record.expectedShutdownCancellations, `${label} expected shutdown cancellations`);
   return {
     started: numericValue(record.started, `${label}.started`),
     succeeded: numericValue(record.succeeded, `${label}.succeeded`),
     failed: numericValue(record.failed, `${label}.failed`),
     ambiguous: numericValue(record.ambiguous, `${label}.ambiguous`),
+    expectedShutdownCancellations: {
+      failed: numericValue(shutdownCancellations.failed, `${label} shutdown cancellation failures`),
+      ambiguous: numericValue(shutdownCancellations.ambiguous, `${label} ambiguous shutdown cancellations`),
+    },
     latencyHistogram,
     latency: latencySummary(latencyHistogram),
     errorClasses,
@@ -462,6 +477,7 @@ function emptyEvidenceStage(): EvidenceStage {
     succeeded: 0,
     failed: 0,
     ambiguous: 0,
+    expectedShutdownCancellations: { failed: 0, ambiguous: 0 },
     latencyHistogram,
     latency: latencySummary(latencyHistogram),
     errorClasses: {},
@@ -474,17 +490,12 @@ function mergeStage(target: EvidenceStage, source: EvidenceStage): void {
   target.succeeded += source.succeeded;
   target.failed += source.failed;
   target.ambiguous += source.ambiguous;
-  target.latencyHistogram.count += source.latencyHistogram.count;
-  target.latencyHistogram.totalMs += source.latencyHistogram.totalMs;
-  target.latencyHistogram.maxMs = Math.max(
-    target.latencyHistogram.maxMs,
-    source.latencyHistogram.maxMs,
-  );
-  target.latencyHistogram.overflow += source.latencyHistogram.overflow;
-  for (const [index, count] of source.latencyHistogram.buckets.entries()) {
-    target.latencyHistogram.buckets[index] =
-      (target.latencyHistogram.buckets[index] ?? 0) + count;
-  }
+  target.expectedShutdownCancellations.failed += source.expectedShutdownCancellations.failed;
+  target.expectedShutdownCancellations.ambiguous += source.expectedShutdownCancellations.ambiguous;
+  target.latencyHistogram = mergeLatencyHistograms([
+    target.latencyHistogram,
+    source.latencyHistogram,
+  ]);
   for (const [name, count] of Object.entries(source.errorClasses)) {
     const errorClass = name as NormalizedErrorClass;
     target.errorClasses[errorClass] = (target.errorClasses[errorClass] ?? 0) + (count ?? 0);

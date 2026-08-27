@@ -39,7 +39,11 @@ test("should_extract_normalized_failure_signals_and_structured_pressure_warnings
       ),
     ]);
 
-    const analysis = await analyzeScenarioArtifacts(directory, "failed");
+    const analysis = await analyzeScenarioArtifacts(directory, {
+      scenario: "domain-pressure",
+      verdict: "failed",
+      workloadDurationMs: 1_000,
+    });
     assert.deepEqual(
       analysis.observations.map(({ code, occurrences, files }) => ({ code, occurrences, files })),
       [
@@ -57,7 +61,11 @@ test("should_extract_normalized_failure_signals_and_structured_pressure_warnings
     }]);
     assert.deepEqual(analysis.brokerSummary, { finalQueuePending: 3, finalRpcPending: 0 });
 
-    const passingAnalysis = await analyzeScenarioArtifacts(directory, "passed");
+    const passingAnalysis = await analyzeScenarioArtifacts(directory, {
+      scenario: "domain-pressure",
+      verdict: "passed",
+      workloadDurationMs: 1_000,
+    });
     assert.deepEqual(passingAnalysis.observations, []);
     assert.equal(passingAnalysis.warnings.length, 1);
   } finally {

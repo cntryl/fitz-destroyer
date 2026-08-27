@@ -62,11 +62,16 @@ export async function runStorageFaultsScenario(
   const iterationEvidence: StorageFaultLedger["iterations"][number][] = [];
 
   for (const iteration of plan) {
+    const iterationStartedAt = performance.now();
     const logs = await runStorageFaultIteration(stack, shape, environment, iteration);
     for (const [worker, log] of logs) cutLogs.set(`${iteration.iteration}-${worker}`, log);
     const evidence = storageOperationEvidence(logs, iteration.sequence);
     iterationEvidence.push({ ...iteration, ...evidence });
-    await artifacts.event("storage_fault_iteration_complete", { ...iteration, ...evidence });
+    await artifacts.event("storage_fault_iteration_complete", {
+      ...iteration,
+      ...evidence,
+      elapsedMs: Math.round(performance.now() - iterationStartedAt),
+    });
   }
 
   await stack.setStorageProxyFault({ mode: "healthy" });

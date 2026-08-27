@@ -18,6 +18,7 @@ export async function runTransactionContentionScenario(
   shape: WorkloadShape,
   artifacts: Artifacts,
 ): Promise<void> {
+  const startedAt = performance.now();
   const environment = { DESTROYER_SEED: String(shape.seed) };
   const prepare = await stack.startRoleContainers("transaction-contender", 1, shape, {
     ...environment,
@@ -51,7 +52,10 @@ export async function runTransactionContentionScenario(
   await artifacts.writeJson("transaction-contention-ledger.json", ledger);
   assertTransactionContention(ledger);
   await stack.waitForLiveDomainQuiescence("kv", baseline, "transaction-contention");
-  await artifacts.event("transaction_contention_complete", ledger);
+  await artifacts.event("transaction_contention_complete", {
+    ...ledger,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
 }
 
 export function analyzeTransactionContention(

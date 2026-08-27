@@ -21,6 +21,7 @@ export async function runScheduleOutageScenario(
   shape: WorkloadShape,
   artifacts: Artifacts,
 ): Promise<void> {
+  const startedAt = performance.now();
   const missedAtMs = nextConsecutiveMinutePair(Date.now() + config.scheduleLeadMs);
   const repeatedAtMs = missedAtMs + 60_000;
   const baseline = await stack.liveDomainSnapshot("schedule");
@@ -87,7 +88,10 @@ export async function runScheduleOutageScenario(
     });
     await stack.finishRoleContainers(cleanup, "schedule-outage-cleanup");
     await stack.waitForLiveDomainQuiescence("schedule", baseline, "schedule-outage");
-    await artifacts.event("schedule_outage_complete", ledger);
+    await artifacts.event("schedule_outage_complete", {
+      ...ledger,
+      elapsedMs: Math.round(performance.now() - startedAt),
+    });
   } catch (error) {
     if (!subscribersFinished) await stopSubscribers(stack, subscribers);
     throw error;

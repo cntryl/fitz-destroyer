@@ -9,8 +9,9 @@ Distroless Node client containers. It does not need AWS credentials or an AWS
 account.
 
 This is a correctness and failure-recovery tool, not a performance benchmark.
-Its timings are useful for spotting large regressions, but they are not stable
-benchmark measurements.
+Its same-run timings and observed rates are advisory operational evidence, not
+capacity measurements, historical comparisons, or performance gates.
+`cntryl-stress` is Fitz's authoritative benchmark suite.
 
 ## Requirements
 
@@ -138,6 +139,39 @@ default). It additionally writes `soak-samples.ndjson`. High p95 latency,
 three-sample pending growth, and post-warmup RSS growth are warnings rather than
 performance gates.
 
+## Operational guidance
+
+Every scenario records a workload duration and scenario-specific count, rate,
+latency, bandwidth, or recovery metrics when its structured completion evidence
+is available. The workload envelope begins after image preparation and initial
+broker readiness, and ends before the final broker shutdown, artifact
+collection, and cleanup. Fault injection, intentional restarts, readiness waits,
+and verification are part of the workload they characterize.
+
+An observed rate is completed work divided by that same run's measured workload
+or phase duration. It describes only the exercised workload, configuration,
+client profile, and host. It is not a maximum sustainable rate or a capacity
+claim. Completion labels remain domain-specific: in particular, a Notice
+publication is publisher acceptance, not confirmed fanout; verified subscriber
+deliveries are reported separately.
+
+Only `domain-pressure` and `soak` receive a categorical advisory rating:
+
+- `constrained`: a definite workload error, ingress dispatch timeout, router
+  backpressure, or any stage p95 above 50% of the request timeout was observed.
+- `watch`: none of the constrained signals occurred, but a stage p95 was above
+  25% of the request timeout, pending work grew through the final samples, or
+  the existing post-warmup RSS-growth signal occurred.
+- `clear`: none of those saturation signals occurred at the observed rate. It
+  does not prove maximum capacity.
+
+The boundaries are strict: a p95 exactly at 25% does not trigger `watch`, and a
+p95 exactly at 50% triggers `watch`, not `constrained`. Expected shutdown
+cancellations and reconciled ambiguous durable outcomes remain visible but do
+not lower the rating. Other scenarios render `not rated` with the reason, while
+still reporting their available metrics. Ratings and metrics never change the
+Destroyer correctness verdict.
+
 `storage-faults` routes Fitz-to-Sqrzl traffic through the local proxy and cycles
 bounded latency, connection reset, a five-second partition, restored-provider
 traffic, and a Fitz crash with storage requests in flight. Its ledger records
@@ -261,7 +295,7 @@ successful standalone stack.
 Run artifacts are written to `artifacts/<run-id>/` and include:
 
 - `events.ndjson` with phase timings and counts
-- `summary.json` with the final verdict and configuration
+- `summary.json` with the final verdict, configuration, and workload timing
 - `compose.log` with timestamped Fitz and Sqrzl logs
 - `compose-ps.json` with final container state
 - per-fault logs captured before killed containers are removed
@@ -286,11 +320,17 @@ can be tested before publication.
 
 After the complete matrix finishes, the `analysis` job downloads all scenario
 evidence, runs `npm run check`, and turns the structured scenario summaries into
-the workflow's final Markdown and JSON report. The report is shown in the job
+the workflow's schema-version-3 Markdown and JSON report. The report is shown in the job
 summary and retained as the `fitz-destroyer-report-*` artifact. It identifies
 the exact workflow run, ref, commit, and evidence artifact for each scenario;
 groups failures by classification; retains bounded expandable diagnostics; and
-reports cleanup and diagnostic timing context. For failed scenarios, analysis
+reports cleanup and diagnostic timing context. Its compact operational table
+covers every scenario, with detailed pressure/soak domain and stage tables.
+Typed count, rate, latency, bandwidth, recovery, completion-semantics, and
+rating data remain in `summary.json`; raw histograms and samples stay in their
+scenario artifacts. Older artifacts without the workload envelope remain
+accepted and degrade unavailable fields to `not rated` instead of failing
+report generation. For failed scenarios, analysis
 also normalizes recurring Fitz actor-stop, connection-loss, storage-disappearance,
 Queue reply-timeout, and KV inventory-warning evidence without claiming that an
 observed signal is the root cause. Structured soak warnings remain diagnostic

@@ -164,6 +164,7 @@ async function runCancellationPhase(
   stream: StreamShape,
   cancelAfterFrames: number,
 ): Promise<void> {
+  const startedAt = performance.now();
   const label = "rpc-stream-caller-cancel";
   const baseline = await stack.liveDomainSnapshot("rpc");
   await artifacts.writeJson(`${label}-stats-before.json`, baseline);
@@ -184,6 +185,7 @@ async function runCancellationPhase(
     expectedOutcome: "cancel",
     cancelAfterFrames,
     cleanup: quiescence.cleanup,
+    elapsedMs: elapsedMs(startedAt),
   });
   await runProbe(stack, artifacts, config, `${label}-probe`, stream);
 }
@@ -195,6 +197,7 @@ async function runWorkerKillPhase(
   stream: StreamShape,
   progressAfterFrames: number,
 ): Promise<void> {
+  const startedAt = performance.now();
   const label = "rpc-stream-worker-kill";
   const baseline = await stack.liveDomainSnapshot("rpc");
   await artifacts.writeJson(`${label}-stats-before.json`, baseline);
@@ -210,6 +213,7 @@ async function runWorkerKillPhase(
     expectedOutcome: "failure",
     progressAfterFrames,
     cleanup: quiescence.cleanup,
+    elapsedMs: elapsedMs(startedAt),
   });
   await runProbe(stack, artifacts, config, `${label}-probe`, stream);
 }
@@ -221,6 +225,7 @@ async function runFitzRestartPhase(
   stream: StreamShape,
   progressAfterFrames: number,
 ): Promise<void> {
+  const startedAt = performance.now();
   const label = "rpc-stream-fitz-restart";
   const baseline = await stack.liveDomainSnapshot("rpc");
   await artifacts.writeJson(`${label}-stats-before.json`, baseline);
@@ -245,6 +250,7 @@ async function runFitzRestartPhase(
     expectedOutcome: "failure",
     progressAfterFrames,
     cleanup: quiescence.cleanup,
+    elapsedMs: elapsedMs(startedAt),
   });
   await runProbe(stack, artifacts, config, `${label}-probe`, stream);
 }

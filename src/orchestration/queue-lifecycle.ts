@@ -17,6 +17,7 @@ export async function runQueueLifecycleScenario(
   shape: WorkloadShape,
   artifacts: Artifacts,
 ): Promise<void> {
+  const startedAt = performance.now();
   const operations = Math.max(8, shape.resources * shape.entriesPerResource);
   const runShape = { ...shape, entriesPerResource: operations };
   const environment = { DESTROYER_SEED: String(shape.seed) };
@@ -49,7 +50,10 @@ export async function runQueueLifecycleScenario(
   await artifacts.writeJson("queue-lifecycle-ledger.json", ledger);
   assertQueueLifecycle(ledger, config.clientReplicas);
   await stack.waitForPressureQuiescence();
-  await artifacts.event("queue_lifecycle_complete", ledger);
+  await artifacts.event("queue_lifecycle_complete", {
+    ...ledger,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
 }
 
 export function analyzeQueueLifecycle(

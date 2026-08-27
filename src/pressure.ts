@@ -26,6 +26,10 @@ export type StageMetrics = {
   succeeded: number;
   failed: number;
   ambiguous: number;
+  expectedShutdownCancellations: {
+    failed: number;
+    ambiguous: number;
+  };
   latency: LatencyHistogram;
   errorClasses: Partial<Record<NormalizedErrorClass, number>>;
   errorSamples: readonly { class: NormalizedErrorClass; error: string }[];
@@ -88,6 +92,7 @@ export function createStageMetrics(): MutableStageMetrics {
     succeeded: 0,
     failed: 0,
     ambiguous: 0,
+    expectedShutdownCancellations: { failed: 0, ambiguous: 0 },
     latency: {
       count: 0,
       totalMs: 0,
@@ -123,10 +128,16 @@ export function recordStageError(
   metrics: MutableStageMetrics,
   error: unknown,
   ambiguous: boolean,
+  expectedShutdownCancellation = false,
 ): NormalizedErrorClass {
   const errorClass = normalizeErrorClass(error);
-  if (ambiguous) metrics.ambiguous += 1;
-  else metrics.failed += 1;
+  if (ambiguous) {
+    metrics.ambiguous += 1;
+    if (expectedShutdownCancellation) metrics.expectedShutdownCancellations.ambiguous += 1;
+  } else {
+    metrics.failed += 1;
+    if (expectedShutdownCancellation) metrics.expectedShutdownCancellations.failed += 1;
+  }
   metrics.errorClasses[errorClass] = (metrics.errorClasses[errorClass] ?? 0) + 1;
   if (metrics.errorSamples.length < 5) {
     metrics.errorSamples.push({ class: errorClass, error: errorMessage(error) });
@@ -140,7 +151,12 @@ export function normalizeErrorClass(error: unknown): NormalizedErrorClass {
   if (name === "TimeoutError" || /\b(?:timeout|timed? out|deadline)\b/iu.test(message)) {
     return "timeout";
   }
-  if (/\b(?:abort|cancel)\w*\b/iu.test(`${name} ${message}`)) return "cancelled";
+  if (
+    /\b(?:abort|cancel)\w*\b/iu.test(`${name} ${message}`) ||
+    /\breceived SIG(?:INT|TERM)\b/u.test(message)
+  ) {
+    return "cancelled";
+  }
   if (/\b(?:queuefull|requestqueuefull|capacity|overload|backpressure|mailbox full)\b/iu.test(`${name} ${message}`)) {
     return "capacity";
   }
@@ -180,6 +196,33 @@ export function latencySummary(histogram: LatencyHistogram): {
     p99Ms: percentile(histogram, 0.99),
     maxMs: round(histogram.maxMs),
   };
+}
+
+export function mergeLatencyHistograms(
+  histograms: readonly LatencyHistogram[],
+): LatencyHistogram {
+  const merged: LatencyHistogram = {
+    count: 0,
+    totalMs: 0,
+    maxMs: 0,
+    buckets: LATENCY_BUCKET_UPPER_MS.map(() => 0),
+    overflow: 0,
+  };
+  for (const histogram of histograms) {
+    if (histogram.buckets.length !== LATENCY_BUCKET_UPPER_MS.length) {
+      throw new Error(
+        `Latency histogram expected ${LATENCY_BUCKET_UPPER_MS.length} buckets, found ${histogram.buckets.length}`,
+      );
+    }
+    merged.count += histogram.count;
+    merged.totalMs += histogram.totalMs;
+    merged.maxMs = Math.max(merged.maxMs, histogram.maxMs);
+    merged.overflow += histogram.overflow;
+    for (const [index, count] of histogram.buckets.entries()) {
+      merged.buckets[index] = (merged.buckets[index] ?? 0) + count;
+    }
+  }
+  return merged;
 }
 
 export function reconcileQueueOutcomes(

@@ -75,7 +75,7 @@ async function loadScenarioResults(directory: string): Promise<AnalyzedScenarioR
       if (isScenarioResult(value)) {
         results.push({
           ...value,
-          reportAnalysis: await analyzeScenarioArtifacts(dirname(path), value.verdict),
+          reportAnalysis: await analyzeScenarioArtifacts(dirname(path), value),
         });
       }
     } catch (error) {

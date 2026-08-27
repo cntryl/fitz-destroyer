@@ -7,6 +7,7 @@ import {
   latencySummary,
   normalizeErrorClass,
   reconcileQueueOutcomes,
+  recordStageError,
   recordStageLatency,
   type PressureBrokerSample,
 } from "../src/pressure.js";
@@ -14,7 +15,7 @@ import {
   fetchWithTransientRetry,
   parseDockerMemoryUsage,
   prometheusMetric,
-} from "../src/orchestration/compose.js";
+} from "../src/orchestration/compose-evidence.js";
 import {
   analyzePressureLogs,
   assertProgressWindows,
@@ -173,6 +174,16 @@ test("should_defer_ambiguous_queue_outcomes_to_exact_reconciliation", () => {
   assert.deepEqual(pressureUnexpectedErrors(clients, ["queue"]), []);
   clients[0]!.domains.queue.stages.enqueue.failed = 1;
   assert.deepEqual(pressureUnexpectedErrors(clients, ["queue"]), ["worker-a/queue=1"]);
+});
+
+test("should_classify_expected_worker_shutdown_signals_as_cancelled", () => {
+  assert.equal(normalizeErrorClass(new Error("received SIGTERM")), "cancelled");
+  assert.equal(normalizeErrorClass(new Error("received SIGINT")), "cancelled");
+
+  const metrics = createStageMetrics();
+  recordStageError(metrics, new Error("received SIGTERM"), false, true);
+  recordStageError(metrics, new Error("received SIGTERM"), true, true);
+  assert.deepEqual(metrics.expectedShutdownCancellations, { failed: 1, ambiguous: 1 });
 });
 
 test("should_require_progress_from_every_client_and_domain_in_each_window", () => {

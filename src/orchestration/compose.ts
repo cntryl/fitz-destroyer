@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import type { RunConfig } from "../config.js";
-import { ALL_DOMAINS, type Domain, type WorkloadShape } from "../workloads/model.js";
+import { type Domain, type WorkloadShape } from "../workloads/model.js";
 import { Artifacts } from "./artifacts.js";
 import { runCommand, type CommandResult } from "./command.js";
 import {
@@ -19,13 +19,18 @@ import {
 } from "./live-scenarios.js";
 import { numericValue, parseJsonRecords } from "./workload-log.js";
 import type { PressureBrokerSample } from "../pressure.js";
-
-type ProgressRecord = {
-  event?: string;
-  window?: Partial<Record<Domain, { success?: number }>>;
-};
-
-type BombardTotals = Record<Domain, { success: number; error: number }>;
+import {
+  clientHandlerConcurrency,
+  elapsedMs,
+  emptyBombardTotals,
+  fetchWithTransientRetry,
+  isPressureQuiescent,
+  parseDockerMemoryUsage,
+  parseWindowSuccesses,
+  prometheusMetric,
+  sleep,
+  type BombardTotals,
+} from "./compose-evidence.js";
 
 export type LiveRole =
   | "durability-verifier"
@@ -167,11 +172,16 @@ export class ComposeStack {
   }
 
   async gracefulRestartFitz(): Promise<void> {
+    const startedAt = performance.now();
     await this.#artifacts.event("fitz_graceful_stop_started");
     await this.compose(["stop", "-t", "20", "fitz"], { stream: true });
     await this.#artifacts.event("fitz_graceful_stop_complete");
     await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
     await this.waitReady();
+    await this.#artifacts.event("fitz_restart_complete", {
+      kind: "graceful",
+      elapsedMs: elapsedMs(startedAt),
+    });
   }
 
   async stopFitz(): Promise<void> {
@@ -181,6 +191,7 @@ export class ComposeStack {
   }
 
   async discardFitzCacheAndRestart(): Promise<void> {
+    const startedAt = performance.now();
     await this.#artifacts.event("fitz_cache_discard_started");
     await this.compose(["stop", "-t", "20", "fitz"], { stream: true });
     await this.captureServiceLogs("fitz", "cache-loss-fitz");
@@ -215,6 +226,10 @@ export class ComposeStack {
     await this.#artifacts.event("fitz_cache_discard_complete", { volume });
     await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
     await this.waitReady();
+    await this.#artifacts.event("fitz_restart_complete", {
+      kind: "cache-loss",
+      elapsedMs: elapsedMs(startedAt),
+    });
   }
 
   async runRecoveryJob(mode: "load" | "verify", shape: WorkloadShape): Promise<void> {
@@ -249,7 +264,16 @@ export class ComposeStack {
       `client-job-${this.#jobSequence.toString().padStart(2, "0")}-${mode}.log`,
       `${result.stdout}${result.stderr}`,
     );
-    await this.#artifacts.event("client_job_complete", { mode, elapsedMs: elapsedMs(startedAt) });
+    const complete = parseJsonRecords(`${result.stdout}\n${result.stderr}`)
+      .filter((record) => record.event === "job_complete" && record.mode === mode)
+      .at(-1);
+    if (complete === undefined) throw new Error(`${mode} client job omitted completion evidence`);
+    await this.#artifacts.event("client_job_complete", {
+      mode,
+      entries: numericValue(complete.entries, `${mode} client job entries`),
+      workerElapsedMs: numericValue(complete.elapsedMs, `${mode} client job elapsedMs`),
+      elapsedMs: elapsedMs(startedAt),
+    });
   }
 
   async runNoticeFanout(
@@ -408,8 +432,13 @@ export class ComposeStack {
   }
 
   async restartFitz(): Promise<void> {
+    const startedAt = performance.now();
     await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
     await this.waitReady();
+    await this.#artifacts.event("fitz_restart_complete", {
+      kind: "forced",
+      elapsedMs: elapsedMs(startedAt),
+    });
   }
 
   async ensureReady(): Promise<void> {
@@ -958,117 +987,4 @@ export class ComposeStack {
       },
     );
   }
-}
-
-export async function fetchWithTransientRetry(
-  fetchOnce: () => Promise<Response>,
-  attempts = 3,
-  retryDelayMs = 100,
-): Promise<Response> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await fetchOnce();
-    } catch (error) {
-      lastError = error;
-      if (attempt < attempts) await sleep(retryDelayMs);
-    }
-  }
-  throw lastError;
-}
-
-function parseWindowSuccesses(logs: string): Record<Domain, number> {
-  const successes = Object.fromEntries(ALL_DOMAINS.map((domain) => [domain, 0])) as Record<Domain, number>;
-  for (const line of logs.split("\n")) {
-    const jsonStart = line.indexOf("{");
-    if (jsonStart < 0) continue;
-    try {
-      const record = JSON.parse(line.slice(jsonStart)) as ProgressRecord;
-      if (record.event !== "progress" || record.window === undefined) continue;
-      for (const domain of ALL_DOMAINS) successes[domain] += record.window[domain]?.success ?? 0;
-    } catch {
-      // npm prelude and Docker diagnostics are not workload progress records.
-    }
-  }
-  return successes;
-}
-
-function emptyBombardTotals(): BombardTotals {
-  return Object.fromEntries(
-    ALL_DOMAINS.map((domain) => [domain, { success: 0, error: 0 }]),
-  ) as BombardTotals;
-}
-
-function elapsedMs(startedAt: number): number {
-  return Math.round(performance.now() - startedAt);
-}
-
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function clientHandlerConcurrency(config: RunConfig): number {
-  return config.clientProfile === "broker-isolation" ? 1_000_000 : config.liveConcurrency;
-}
-
-export function parseDockerMemoryUsage(value: string): number {
-  const used = value.split("/")[0]?.trim() ?? "";
-  const match = /^(\d+(?:\.\d+)?)\s*([kmgtpe]?i?b)$/iu.exec(used);
-  if (match?.[1] === undefined || match[2] === undefined) {
-    throw new Error(`Cannot parse Docker memory usage '${value}'`);
-  }
-  const amount = Number(match[1]);
-  const unit = match[2].toLowerCase();
-  const powers: Readonly<Record<string, number>> = {
-    b: 0,
-    kb: 1,
-    kib: 1,
-    mb: 2,
-    mib: 2,
-    gb: 3,
-    gib: 3,
-    tb: 4,
-    tib: 4,
-    pb: 5,
-    pib: 5,
-    eb: 6,
-    eib: 6,
-  };
-  const power = powers[unit];
-  if (power === undefined) throw new Error(`Cannot parse Docker memory unit '${unit}'`);
-  return Math.round(amount * 1_024 ** power);
-}
-
-function isPressureQuiescent(sample: PressureBrokerSample): boolean {
-  return (
-    numericField(sample.queue, "messages_ready") === 0 &&
-    numericField(sample.queue, "messages_delayed") === 0 &&
-    numericField(sample.queue, "messages_pending") === 0 &&
-    numericField(sample.queue, "inflight_active") === 0 &&
-    numericField(sample.rpc, "workers_registered") === 0 &&
-    numericField(sample.rpc, "requests_pending") === 0 &&
-    numericField(sample.metrics, "sessionCleanupPending") === 0
-  );
-}
-
-function numericField(value: Readonly<Record<string, unknown>>, field: string): number {
-  const item = value[field];
-  return typeof item === "number" && Number.isFinite(item) ? item : 0;
-}
-
-export function prometheusMetric(text: string, name: string): number {
-  let total = 0;
-  let found = false;
-  for (const line of text.split("\n")) {
-    if (line.startsWith("#")) continue;
-    const match = /^(\S+?)(?:\{[^}]*\})?\s+(-?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?)$/iu.exec(
-      line.trim(),
-    );
-    if (match?.[1] !== name || match[2] === undefined) continue;
-    const value = Number(match[2]);
-    if (!Number.isFinite(value)) continue;
-    total += value;
-    found = true;
-  }
-  return found ? total : 0;
 }

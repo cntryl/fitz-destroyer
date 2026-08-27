@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDestroyerReport, renderDestroyerReport } from "../src/report.js";
+import { emptyGuidance } from "../src/operational-guidance.js";
+import type { OperationalGuidance } from "../src/operational-guidance.js";
 import type { ConcreteScenario, ScenarioResult } from "../src/scenario.js";
 
 test("should_build_an_ordered_report_from_scenario_artifacts", () => {
@@ -14,7 +16,7 @@ test("should_build_an_ordered_report_from_scenario_artifacts", () => {
   );
 
   assert.equal(report.verdict, "passed");
-  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.schemaVersion, 3);
   assert.deepEqual(report.results.map(({ scenario }) => scenario), expected);
   assert.deepEqual(report.totals, { expected: 2, reported: 2, passed: 2, failed: 0, missing: 0 });
   assert.deepEqual(report.timing, {
@@ -22,6 +24,111 @@ test("should_build_an_ordered_report_from_scenario_artifacts", () => {
     slowestScenario: "clean-restart",
     slowestDurationMs: 1_250,
   });
+  assert.equal(report.results[0]?.workloadDurationMs, null);
+  assert.match(renderDestroyerReport(report), /Operational guidance/u);
+  assert.match(renderDestroyerReport(report), /not rated/u);
+});
+
+test("should_render_compact_guidance_and_detailed_pressure_stages_with_escaping", () => {
+  const guidance: OperationalGuidance = {
+    workloadDurationMs: 10_000,
+    completionSemantics: [{ key: "notice-operations", label: "publisher acceptance, not confirmed fanout" }],
+    counts: [{
+      kind: "count",
+      key: "notice-operations",
+      label: "Notice operations",
+      value: 500,
+      unit: "operations",
+      completionSemantics: "publisher acceptance, not confirmed fanout",
+    }],
+    rates: [{
+      kind: "rate",
+      key: "notice-operations",
+      label: "Notice operations",
+      count: 500,
+      durationMs: 10_000,
+      valuePerSecond: 50,
+      unit: "operations/s",
+      completionSemantics: "publisher acceptance, not confirmed fanout",
+    }],
+    latencies: [],
+    bandwidth: [],
+    recoveries: [],
+    rating: { value: "clear", reasons: ["No saturation signals at the observed rate."] },
+    pressureDomains: [{
+      domain: "notice",
+      completionSemantics: "publisher acceptance, not confirmed fanout",
+      completedOperations: 500,
+      observedOperationsPerSecond: 50,
+      errors: 0,
+      ambiguousOutcomes: 1,
+      expectedCancellations: 1,
+      slowestStage: "publish|ack",
+      stages: [{
+        stage: "publish|ack",
+        started: 502,
+        succeeded: 500,
+        errors: 0,
+        ambiguousOutcomes: 1,
+        expectedCancellations: 1,
+        latency: { count: 502, meanMs: 2, p50Ms: 2, p95Ms: 5, p99Ms: 10, maxMs: 20 },
+      }],
+    }],
+  };
+  const input = {
+    ...result("domain-pressure", "passed"),
+    reportAnalysis: {
+      observations: [],
+      warnings: [],
+      brokerSummary: null,
+      operationalGuidance: guidance,
+    },
+  };
+
+  const report = buildDestroyerReport(
+    ["domain-pressure"],
+    [input],
+    "success",
+    "success",
+    "2026-08-25T12:00:00.000Z",
+  );
+  const markdown = renderDestroyerReport(report);
+
+  assert.match(markdown, /Notice operations 50\.00 operations\/s/u);
+  assert.match(markdown, /publisher acceptance, not confirmed fanout/u);
+  assert.match(markdown, /Domain \| Completion semantics \| Completed operations/u);
+  assert.match(markdown, /clear — No saturation signals at the observed rate/u);
+  assert.match(markdown, /publish\\\|ack/u);
+  const rebuilt = buildDestroyerReport(
+    ["domain-pressure"],
+    [input],
+    "success",
+    "success",
+    "2026-08-25T12:00:00.000Z",
+  );
+  assert.equal(JSON.stringify(report), JSON.stringify(rebuilt));
+  assert.equal(JSON.parse(JSON.stringify(report)).schemaVersion, 3);
+});
+
+test("should_not_change_the_correctness_verdict_for_constrained_guidance", () => {
+  const constrained = {
+    ...emptyGuidance(1_000, "fixture"),
+    rating: { value: "constrained" as const, reasons: ["router backpressure increased"] },
+  };
+  const input = {
+    ...result("domain-pressure", "passed"),
+    reportAnalysis: {
+      observations: [],
+      warnings: [],
+      brokerSummary: null,
+      operationalGuidance: constrained,
+    },
+  };
+
+  const report = buildDestroyerReport(["domain-pressure"], [input], "success", "success");
+
+  assert.equal(report.verdict, "passed");
+  assert.match(renderDestroyerReport(report), /constrained/u);
 });
 
 test("should_fail_the_report_for_failed_missing_or_duplicate_scenarios", () => {
@@ -83,6 +190,7 @@ test("should_render_actionable_failure_evidence_and_bounded_diagnostic_tail", ()
         details: { finalPendingWork: [1, 2, 3] },
       }],
       brokerSummary: { finalQueuePending: 3 },
+      operationalGuidance: emptyGuidance(60_000, "fixture"),
     },
   };
   const report = buildDestroyerReport(

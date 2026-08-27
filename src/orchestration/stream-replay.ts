@@ -20,6 +20,7 @@ export async function runStreamReplayScenario(
   shape: WorkloadShape,
   artifacts: Artifacts,
 ): Promise<void> {
+  const startedAt = performance.now();
   const operations = shape.resources * shape.entriesPerResource;
   const commitAtMs = Date.now() + 10_000;
   const contenders = await stack.startRoleContainers(
@@ -48,7 +49,10 @@ export async function runStreamReplayScenario(
   assertStreamReplay(ledger, operations);
   const baseline = await stack.liveDomainSnapshot("stream");
   await stack.waitForLiveDomainQuiescence("stream", baseline, "stream-replay");
-  await artifacts.event("stream_replay_complete", ledger);
+  await artifacts.event("stream_replay_complete", {
+    ...ledger,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
 }
 
 export function analyzeStreamReplay(

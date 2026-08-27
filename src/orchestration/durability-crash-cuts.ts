@@ -55,6 +55,7 @@ export async function runDurabilityCrashCutsScenario(
   const cutLogs = new Map<string, string>();
   const iterationEvidence: Array<CrashCutIteration & { outcomes: ReturnType<typeof cutOutcomes> }> = [];
   for (const iteration of iterations) {
+    const iterationStartedAt = performance.now();
     const logs = await runCrashCutIteration(stack, shape, environment, iteration, runLabel);
     for (const [worker, log] of logs) cutLogs.set(`${iteration.iteration}-${worker}`, log);
     const outcomes = cutOutcomes(logs, iteration.sequence);
@@ -62,6 +63,7 @@ export async function runDurabilityCrashCutsScenario(
     await artifacts.event("durability_crash_cut_iteration_complete", {
       ...iteration,
       outcomes,
+      elapsedMs: Math.round(performance.now() - iterationStartedAt),
     });
   }
 

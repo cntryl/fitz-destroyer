@@ -8,6 +8,7 @@ import type {
   ScenarioReportAnalysis,
 } from "./report.js";
 import type { ScenarioResult } from "./scenario.js";
+import { extractOperationalGuidance } from "./operational-guidance.js";
 
 type ObservationDefinition = {
   code: string;
@@ -45,12 +46,17 @@ const observationDefinitions: readonly ObservationDefinition[] = [
 
 export async function analyzeScenarioArtifacts(
   directory: string,
-  verdict: ScenarioResult["verdict"],
+  result: Pick<ScenarioResult, "scenario" | "verdict" | "workloadDurationMs">,
 ): Promise<ScenarioReportAnalysis> {
   const pressure = await readPressureEvidence(directory);
+  const operationalGuidance = await extractOperationalGuidance(
+    directory,
+    result.scenario,
+    result.workloadDurationMs,
+  );
   let observations: ReportObservation[] = [];
   const warnings = [...pressure.warnings];
-  if (verdict === "failed") {
+  if (result.verdict === "failed") {
     try {
       observations = await analyzeLogs(directory);
     } catch (error) {
@@ -65,6 +71,7 @@ export async function analyzeScenarioArtifacts(
     observations,
     warnings,
     brokerSummary: pressure.brokerSummary,
+    operationalGuidance,
   };
 }
 
