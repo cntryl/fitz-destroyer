@@ -16,7 +16,7 @@ test("should_reject_invalid_response_boundary_limits", () => {
 
 test("should_require_every_response_boundary_domain_and_recovery_canary", () => {
   // Arrange
-  const evidence = { domains: 6, exactFit: 6, oneOverRejected: 3, boundedAggregates: 2, canaryOperations: 6 };
+  const evidence = { domains: 7, exactFit: 7, oneOverRejected: 3, boundedAggregates: 2, canaryOperations: 7 };
   // Act / Assert
   assert.doesNotThrow(() => assertResponseEnvelopeEvidence(evidence));
   assert.throws(() => assertResponseEnvelopeEvidence({ ...evidence, boundedAggregates: 1 }), /boundedAggregates=1\/2/u);

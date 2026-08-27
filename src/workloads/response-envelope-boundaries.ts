@@ -48,8 +48,11 @@ export async function runResponseEnvelopeBoundaries(client: Client, options: Liv
   oneOverRejected += await verifyRpcBoundary(client, options.namespace, sizes, options.requestTimeoutMs);
   exactFit += 1;
   canaryOperations += 1;
+  await verifyLeaseBoundary(client, options.namespace);
+  exactFit += 1;
+  canaryOperations += 1;
 
-  log("response_envelope_boundaries_worker_complete", { domains: 6, exactFit, oneOverRejected, boundedAggregates, canaryOperations, elapsedMs: Math.round(performance.now() - startedAt) });
+  log("response_envelope_boundaries_worker_complete", { domains: 7, exactFit, oneOverRejected, boundedAggregates, canaryOperations, elapsedMs: Math.round(performance.now() - startedAt) });
 }
 
 async function verifyKvAggregateBoundary(client: Client, namespace: string): Promise<number> {
@@ -119,6 +122,16 @@ async function verifyRpcBoundary(client: Client, namespace: string, sizes: { exa
   await worker.unsubscribe();
   if (exactFrames !== 1 || rejected !== 1) throw new Error(`RPC envelope outcomes exact=${exactFrames}, rejected=${rejected}`);
   return rejected;
+}
+
+async function verifyLeaseBoundary(client: Client, namespace: string): Promise<void> {
+  const route = `lease://destroyer/${namespace}/envelope-boundary`;
+  const lease = await client.lease.acquire(route, { ttlSeconds: 30, waitSeconds: 0 });
+  const state = await client.lease.query(route);
+  if (!state.isHeld) throw new Error("Lease exact-fit query did not report the acquired holder");
+  await lease.release();
+  const released = await client.lease.query(route);
+  if (released.isHeld || released.pendingWaiters !== 0) throw new Error("Lease boundary cleanup did not quiesce");
 }
 
 function isTypedDomainError(error: unknown): boolean {
