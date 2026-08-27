@@ -106,6 +106,18 @@ test("should_accept_bucket_one_scenarios", () => {
   }
 });
 
+test("should_accept_bucket_two_scenarios", () => {
+  for (const scenario of [
+    "authorization-isolation",
+    "stream-global-recovery",
+    "queue-dead-letter-fencing",
+    "cold-boot-provider-outage",
+    "hostile-rpc-worker",
+  ]) {
+    assert.equal(parseArgs([scenario], {}).scenario, scenario);
+  }
+});
+
 test("should_reject_removed_reuse_images_option", () => {
   assert.throws(() => parseArgs(["clean-restart", "--reuse-images"], {}), /Missing value/);
 });

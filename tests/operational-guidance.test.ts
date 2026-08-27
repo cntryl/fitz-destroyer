@@ -285,6 +285,21 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "response-loss") return [{ event: "response_loss_complete", attempted: 4, acknowledgedAfterDrop: 0, observedAfterDrop: 2, elapsedMs: 1_000 }];
   if (scenario === "active-graceful-shutdown") return [{ event: "active_graceful_shutdown_complete", durableOperationsStarted: 4, rpcCallsInterrupted: 1, probeFrames: 16, elapsedMs: 1_000 }];
   if (scenario === "half-open-session") return [{ event: "half_open_session_complete", staleRejections: 4, queueRedelivered: 1, leaseReacquired: 1, elapsedMs: 1_000 }];
+  if (scenario === "authorization-isolation") return [{ event: "authorization_isolation_complete", identities: 2, ownRouteOperations: 4, deniedOperations: 4, elapsedMs: 1_000 }];
+  if (scenario === "stream-global-recovery") return [{ event: "stream_global_recovery_complete", loaded: 40, recovered: 40, pages: 6, elapsedMs: 1_000 }];
+  if (scenario === "queue-dead-letter-fencing") return [{ event: "queue_dead_letter_fencing_complete", oversizedRejected: 1, staleCompletionRejected: 1, redelivered: 1, completed: 1, elapsedMs: 1_000 }];
+  if (scenario === "cold-boot-provider-outage") return [{ event: "cold_boot_provider_outage_complete", readinessChecks: 5, readyResponsesDuringOutage: 0, recoveryMs: 500, elapsedMs: 1_000 }];
+  if (scenario === "hostile-rpc-worker") {
+    return [{
+      event: "hostile_rpc_worker_complete",
+      returnWithoutTerminalFailures: 1,
+      returnWithoutTerminalFrames: 0,
+      thrownHandlerFailures: 0,
+      thrownHandlerFrames: 1,
+      probeFrames: 2,
+      elapsedMs: 1_000,
+    }];
+  }
   if (scenario === "queue-redelivery") return [{ event: "queue_redelivery_complete", produced: 20, recovered: 20, elapsedMs: 1_000 }];
   if (scenario === "lease-contention") return [{ event: "lease_contention_complete", contenderAdmissions: 20, elapsedMs: 1_000 }];
   if (scenario === "hot-route-canary") return [{ event: "hot_route_canary_complete", hotTotals: { queue: { success: 10, error: 0 } }, canaryMaximumMs: { queue: 5 }, elapsedMs: 1_000 }];

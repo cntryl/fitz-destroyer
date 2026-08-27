@@ -14,6 +14,11 @@ export type ScenarioName =
   | "active-graceful-shutdown"
   | "queue-redelivery"
   | "queue-overload-recovery"
+  | "authorization-isolation"
+  | "stream-global-recovery"
+  | "queue-dead-letter-fencing"
+  | "cold-boot-provider-outage"
+  | "hostile-rpc-worker"
   | "lease-contention"
   | "hot-route-canary"
   | "protocol-abuse"
@@ -113,7 +118,7 @@ export type RunConfig = Scale & {
   destroyerImage: string | undefined;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -346,6 +351,11 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "active-graceful-shutdown" ||
     value === "queue-redelivery" ||
     value === "queue-overload-recovery" ||
+    value === "authorization-isolation" ||
+    value === "stream-global-recovery" ||
+    value === "queue-dead-letter-fencing" ||
+    value === "cold-boot-provider-outage" ||
+    value === "hostile-rpc-worker" ||
     value === "lease-contention" ||
     value === "hot-route-canary" ||
     value === "protocol-abuse" ||

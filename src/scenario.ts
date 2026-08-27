@@ -23,6 +23,11 @@ import { runQueueOverloadRecoveryScenario } from "./orchestration/queue-overload
 import { runResponseLossScenario } from "./orchestration/response-loss.js";
 import { runActiveGracefulShutdownScenario } from "./orchestration/active-graceful-shutdown.js";
 import { runHalfOpenSessionScenario } from "./orchestration/half-open-session.js";
+import { runAuthorizationIsolationScenario } from "./orchestration/authorization-isolation.js";
+import { runStreamGlobalRecoveryScenario } from "./orchestration/stream-global-recovery.js";
+import { runQueueDeadLetterFencingScenario } from "./orchestration/queue-dead-letter-fencing.js";
+import { runColdBootProviderOutageScenario } from "./orchestration/cold-boot-provider-outage.js";
+import { runHostileRpcWorkerScenario } from "./orchestration/hostile-rpc-worker.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -228,6 +233,16 @@ async function executeWorkload(
     await runActiveGracefulShutdownScenario(stack, config, shape, artifacts);
   } else if (scenario === "half-open-session") {
     await runHalfOpenSessionScenario(stack, config, shape, artifacts);
+  } else if (scenario === "authorization-isolation") {
+    await runAuthorizationIsolationScenario(stack, config, shape, artifacts);
+  } else if (scenario === "stream-global-recovery") {
+    await runStreamGlobalRecoveryScenario(stack, config, shape, artifacts);
+  } else if (scenario === "queue-dead-letter-fencing") {
+    await runQueueDeadLetterFencingScenario(stack, config, shape, artifacts);
+  } else if (scenario === "cold-boot-provider-outage") {
+    await runColdBootProviderOutageScenario(stack, config, shape, artifacts);
+  } else if (scenario === "hostile-rpc-worker") {
+    await runHostileRpcWorkerScenario(stack, config, shape, artifacts);
   } else if (scenario === "notice-fanout") {
     await stack.runNoticeFanout(shape);
   } else if (scenario === "queue-redelivery") {

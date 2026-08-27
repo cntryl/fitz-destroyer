@@ -78,6 +78,34 @@ restored, the scenario applies the same stale-handle, Queue redelivery, KV and
 Stream rollback, and Lease release assertions as `session-boundaries` without
 restarting Fitz.
 
+`authorization-isolation` starts Fitz in authenticated local-development mode
+with two JWT identities mapped to distinct route families. Both identities use
+the same KV route and key but must recover their own value, while operations in
+an ungranted realm must return a permission error. Tokens and the HMAC key are
+generated only for the disposable local Compose stack.
+
+`stream-global-recovery` commits an ordered ledger across multiple realms,
+areas, and resources, discards Fitz's cache, and replays `stream://**` through
+small pages. It requires exact global offsets, resource-local offsets, routes,
+payloads, and record counts after reconstruction from Sqrzl.
+
+`queue-dead-letter-fencing` checks the public boundaries around Queue failure
+handling: a body that can never fit a reserve response must be rejected before
+acknowledgement, an expired delivery token must not complete a redelivered
+record, and dead-letter admin mutations without the exact route-family scope
+must be rejected. The default production Queue configuration has no retry cap,
+so this scenario does not manufacture a dead letter through private storage.
+
+`cold-boot-provider-outage` loads durable state, stops the running Fitz process,
+blocks its storage provider, and cold-starts the broker. Fitz must
+never report ready while the provider is unavailable. After storage returns,
+the scenario waits for readiness and verifies the full durable workload.
+
+`hostile-rpc-worker` registers handlers that either return without a terminal
+frame or throw. A missing terminal must time out, while a thrown handler must
+produce its bounded terminal error frame. Runtime state must quiesce, and an
+independent well-behaved worker/caller probe must still complete afterward.
+
 `session-boundaries` holds a Queue reservation, an uncommitted KV transaction,
 an uncommitted Stream append session, and a Lease across a Fitz `SIGKILL` and
 reconnect. Every stale handle must reject. The Queue item must redeliver, the
@@ -377,7 +405,7 @@ host controls faults; no container receives the Docker socket.
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain

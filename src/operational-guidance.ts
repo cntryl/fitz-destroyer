@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { LATENCY_BUCKET_UPPER_MS, latencySummary, type LatencyHistogram } from "./pressure.js";
 import type { ConcreteScenario } from "./scenario.js";
 import { ALL_DOMAINS, type Domain } from "./workloads/model.js";
+import { completionMetricsForScenario } from "./operational-guidance-completion.js";
 
 export type GuidanceRating = "clear" | "watch" | "constrained" | "not-rated";
 
@@ -93,8 +94,8 @@ export type OperationalGuidance = {
   pressureDomains: readonly PressureDomainSummary[];
 };
 
-type EventRecord = Readonly<Record<string, unknown>> & { event: string };
-type MetricCollections = Pick<
+export type EventRecord = Readonly<Record<string, unknown>> & { event: string };
+export type MetricCollections = Pick<
   OperationalGuidance,
   "completionSemantics" | "counts" | "rates" | "latencies" | "bandwidth" | "recoveries"
 >;
@@ -170,38 +171,12 @@ function extractScenarioMetrics(
   events: readonly EventRecord[],
   workloadDurationMs: number | null,
 ): MetricCollections {
+  const completionMetrics = completionMetricsForScenario(scenario, events);
+  if (completionMetrics !== null) return completionMetrics;
   if (scenario === "clean-restart" || scenario === "cache-loss") {
     return recoveryScenarioMetrics(events);
   }
   if (scenario === "durability-crash-cuts") return crashCutMetrics(events);
-  if (scenario === "queue-overload-recovery") {
-    return completionEventMetrics(events, "queue_overload_recovery_complete", [
-      ["attempted", "Queue attempts"],
-      ["failed", "Bounded failures"],
-      ["recovered", "Recovered records"],
-      ["probeCompleted", "Post-overload probe completions"],
-    ]);
-  }
-  if (scenario === "response-loss") {
-    return completionEventMetrics(events, "response_loss_complete", [
-      ["attempted", "Durable attempts"],
-      ["observedAfterDrop", "Reconciled ambiguous outcomes"],
-    ]);
-  }
-  if (scenario === "active-graceful-shutdown") {
-    return completionEventMetrics(events, "active_graceful_shutdown_complete", [
-      ["durableOperationsStarted", "Durable operations started"],
-      ["rpcCallsInterrupted", "RPC calls interrupted"],
-      ["probeFrames", "Post-shutdown probe frames"],
-    ]);
-  }
-  if (scenario === "half-open-session") {
-    return completionEventMetrics(events, "half_open_session_complete", [
-      ["staleRejections", "Stale-handle rejections"],
-      ["queueRedelivered", "Queue redeliveries"],
-      ["leaseReacquired", "Lease reacquisitions"],
-    ]);
-  }
   if (scenario === "queue-redelivery") return queueRedeliveryMetrics(events);
   if (scenario === "lease-contention") return leaseContentionMetrics(events);
   if (scenario === "hot-route-canary") return hotRouteMetrics(events, workloadDurationMs);
@@ -239,29 +214,6 @@ function recoveryScenarioMetrics(events: readonly EventRecord[]): MetricCollecti
     addCountAndRate(metrics, `${mode}-entries`, `${capitalize(mode)} entries`, entries, "entries", semantics, durationMs);
   }
   addRestartMetrics(metrics, events);
-  return metrics;
-}
-
-function completionEventMetrics(
-  events: readonly EventRecord[],
-  eventName: string,
-  fields: readonly (readonly [string, string])[],
-): MetricCollections {
-  const metrics = mutableMetrics();
-  const complete = requiredLastEvent(events, eventName);
-  const durationMs = eventDuration(complete);
-  for (const [key, label] of fields) {
-    addCountAndRate(
-      metrics,
-      key,
-      label,
-      numberField(complete, key),
-      "outcomes",
-      "verified fault and recovery outcomes",
-      durationMs,
-    );
-  }
-  addRecovery(metrics, "scenario-recovery", "Fault injection through recovery verification", durationMs);
   return metrics;
 }
 
@@ -839,6 +791,11 @@ function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly E
     "response-loss": "response_loss_complete",
     "active-graceful-shutdown": "active_graceful_shutdown_complete",
     "half-open-session": "half_open_session_complete",
+    "authorization-isolation": "authorization_isolation_complete",
+    "stream-global-recovery": "stream_global_recovery_complete",
+    "queue-dead-letter-fencing": "queue_dead_letter_fencing_complete",
+    "cold-boot-provider-outage": "cold_boot_provider_outage_complete",
+    "hostile-rpc-worker": "hostile_rpc_worker_complete",
     "queue-redelivery": "queue_redelivery_complete",
     "lease-contention": "lease_contention_complete",
     "hot-route-canary": "hot_route_canary_complete",

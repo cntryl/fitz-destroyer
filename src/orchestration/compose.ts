@@ -23,8 +23,10 @@ import {
   clientHandlerConcurrency,
   elapsedMs,
   emptyBombardTotals,
-  fetchWithTransientRetry,
+  fetchJsonObject,
+  fetchText,
   isPressureQuiescent,
+  loopbackPortUrl,
   parseDockerMemoryUsage,
   parseWindowSuccesses,
   prometheusMetric,
@@ -67,7 +69,12 @@ export type LiveRole =
   | "schedule-outage-cleanup"
   | "schedule-outage-subscriber"
   | "queue-overload-producer"
-  | "queue-overload-drainer";
+  | "queue-overload-drainer"
+  | "authorization-isolation"
+  | "stream-global-recovery"
+  | "queue-dead-letter-fencing"
+  | "hostile-rpc-worker"
+  | "hostile-rpc-caller";
 
 export type RoleContainer = {
   id: string;
@@ -118,6 +125,17 @@ export class ComposeStack {
       DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
       DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
       DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
+      ...(config.scenario === "authorization-isolation"
+        ? {
+            FITZ_AUTH_REQUIRED: "true",
+            FITZ_ASSUME_EXTERNAL_TLS: "true",
+            FITZ_JWT_HMAC_SECRET: "fitz-destroyer-local-auth-only",
+            FITZ_JWT_AUDIENCES: "fitz-destroyer",
+            FITZ_ROUTE_FAMILIES: "1,2",
+            FITZ_ROUTE_FAMILY_MAP: "identity-a=1,identity-b=2",
+            FITZ_ROUTE_FAMILY_CLAIM: "tid",
+          }
+        : {}),
     };
   }
 
@@ -447,6 +465,10 @@ export class ComposeStack {
     });
   }
 
+  async startFitzUnchecked(): Promise<void> {
+    await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
+  }
+
   async ensureReady(): Promise<void> {
     await this.waitReady();
   }
@@ -683,53 +705,23 @@ export class ComposeStack {
   }
 
   private async fetchJson(path: string): Promise<Readonly<Record<string, unknown>>> {
-    const response = await fetchWithTransientRetry(() =>
-      fetch(`http://127.0.0.1:${this.#config.port}${path}`, {
-        signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
-      })
-    );
-    if (!response.ok) {
-      throw new Error(`${path} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
-    }
-    const value: unknown = await response.json();
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      throw new Error(`${path} did not return a JSON object`);
-    }
-    return value as Readonly<Record<string, unknown>>;
+    return fetchJsonObject(`http://127.0.0.1:${this.#config.port}${path}`, this.#config.requestTimeoutMs);
   }
 
   private async fetchTextAt(url: string, label: string): Promise<string> {
-    const response = await fetchWithTransientRetry(() =>
-      fetch(url, {
-        signal: AbortSignal.timeout(Math.min(this.#config.requestTimeoutMs, 30_000)),
-      })
-    );
-    if (!response.ok) {
-      throw new Error(`${label} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
-    }
-    return response.text();
+    return fetchText(url, label, this.#config.requestTimeoutMs);
   }
 
   private async metricsUrl(): Promise<string> {
     if (this.#metricsUrl !== undefined) return this.#metricsUrl;
     const result = await this.compose(["port", "fitz", "9090"]);
-    const address = result.stdout.trim().split("\n")[0]?.trim();
-    const match = /^(?:127\.0\.0\.1|\[::1\]|0\.0\.0\.0|\[::\]):(\d+)$/u.exec(address ?? "");
-    if (match?.[1] === undefined) {
-      throw new Error(`Could not resolve loopback Fitz metrics port from '${result.stdout.trim()}'`);
-    }
-    this.#metricsUrl = `http://127.0.0.1:${match[1]}`;
+    this.#metricsUrl = loopbackPortUrl(result.stdout, "Fitz metrics");
     return this.#metricsUrl;
   }
 
   private async faultProxyControlUrl(service: string, controlPort: string): Promise<string> {
     const result = await this.compose(["port", service, controlPort]);
-    const address = result.stdout.trim().split("\n")[0]?.trim();
-    const match = /^(?:127\.0\.0\.1|\[::1\]|0\.0\.0\.0|\[::\]):(\d+)$/u.exec(address ?? "");
-    if (match?.[1] === undefined) {
-      throw new Error(`Could not resolve loopback ${service} control port from '${result.stdout.trim()}'`);
-    }
-    return `http://127.0.0.1:${match[1]}`;
+    return loopbackPortUrl(result.stdout, `${service} control`);
   }
 
   private async waitReady(): Promise<void> {

@@ -66,6 +66,11 @@ jobs:
           - response-loss
           - active-graceful-shutdown
           - half-open-session
+          - authorization-isolation
+          - stream-global-recovery
+          - queue-dead-letter-fencing
+          - cold-boot-provider-outage
+          - hostile-rpc-worker
           - queue-redelivery
           - lease-contention
           - hot-route-canary

@@ -64,6 +64,20 @@ import {
   type ScheduleOutageAction,
 } from "./workloads/schedule-outage.js";
 import { runQueueOverload } from "./workloads/queue-overload.js";
+import {
+  runAuthorizationIsolation,
+  type AuthorizationIsolationAction,
+} from "./workloads/authorization-isolation.js";
+import {
+  runStreamGlobalRecovery,
+  type StreamGlobalRecoveryAction,
+} from "./workloads/stream-global-recovery.js";
+import { runQueueDeadLetterFencing } from "./workloads/queue-dead-letter-fencing.js";
+import {
+  runHostileRpcCaller,
+  runHostileRpcWorker,
+  type HostileRpcBehavior,
+} from "./workloads/hostile-rpc-worker.js";
 
 type WorkerMode =
   | "load"
@@ -102,7 +116,12 @@ type WorkerMode =
   | "schedule-outage-cleanup"
   | "schedule-outage-subscriber"
   | "queue-overload-producer"
-  | "queue-overload-drainer";
+  | "queue-overload-drainer"
+  | "authorization-isolation"
+  | "stream-global-recovery"
+  | "queue-dead-letter-fencing"
+  | "hostile-rpc-worker"
+  | "hostile-rpc-caller";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -176,6 +195,9 @@ function makeClient(reconnect: boolean): Client {
   return createClient({
     url: process.env.FITZ_URL ?? "ws://fitz:4090/ws",
     transport: "ws",
+    ...(process.env.DESTROYER_JWT === undefined
+      ? {}
+      : { tokenProvider: async () => requiredEnv("DESTROYER_JWT") }),
     timeout: requestTimeoutMs,
     reconnect: {
       enabled: reconnect,
@@ -226,6 +248,7 @@ async function runLiveRole(
     liveMode === "queue-redelivery-victim" ||
     liveMode === "rpc-worker" ||
     liveMode === "rpc-stream-worker" ||
+    liveMode === "hostile-rpc-worker" ||
     liveMode === "schedule-subscriber" ||
     liveMode === "schedule-outage-subscriber" ||
     liveMode === "session-boundaries"
@@ -267,6 +290,34 @@ async function runLiveRole(
             ? "verify"
             : durabilityAction(process.env.DESTROYER_DURABILITY_ACTION),
       },
+      log,
+    );
+  } else if (
+    liveMode === "authorization-isolation"
+  ) {
+    await runAuthorizationIsolation(
+      client,
+      { ...options, action: authorizationIsolationAction(process.env.DESTROYER_AUTH_ACTION) },
+      log,
+    );
+  } else if (liveMode === "stream-global-recovery") {
+    await runStreamGlobalRecovery(
+      client,
+      { ...options, action: streamGlobalRecoveryAction(process.env.DESTROYER_STREAM_GLOBAL_ACTION) },
+      log,
+    );
+  } else if (liveMode === "queue-dead-letter-fencing") {
+    await runQueueDeadLetterFencing(client, options, log);
+  } else if (liveMode === "hostile-rpc-worker") {
+    await runHostileRpcWorker(
+      client,
+      { ...options, behavior: hostileRpcBehavior(process.env.DESTROYER_HOSTILE_RPC_BEHAVIOR) },
+      log,
+    );
+  } else if (liveMode === "hostile-rpc-caller") {
+    await runHostileRpcCaller(
+      client,
+      { ...options, behavior: hostileRpcBehavior(process.env.DESTROYER_HOSTILE_RPC_BEHAVIOR) },
       log,
     );
   } else if (
@@ -717,7 +768,12 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "schedule-outage-cleanup" ||
     value === "schedule-outage-subscriber" ||
     value === "queue-overload-producer" ||
-    value === "queue-overload-drainer"
+    value === "queue-overload-drainer" ||
+    value === "authorization-isolation" ||
+    value === "stream-global-recovery" ||
+    value === "queue-dead-letter-fencing" ||
+    value === "hostile-rpc-worker" ||
+    value === "hostile-rpc-caller"
   ) {
     return value;
   }
@@ -728,6 +784,24 @@ function durabilityAction(value: string | undefined): DurabilityAction {
   const action = value ?? "baseline";
   if (action === "baseline" || action === "cut") return action;
   throw new Error(`DESTROYER_DURABILITY_ACTION is invalid; received ${action}`);
+}
+
+function authorizationIsolationAction(value: string | undefined): AuthorizationIsolationAction {
+  const action = value ?? "verify";
+  if (action === "write" || action === "verify") return action;
+  throw new Error(`DESTROYER_AUTH_ACTION is invalid; received ${action}`);
+}
+
+function streamGlobalRecoveryAction(value: string | undefined): StreamGlobalRecoveryAction {
+  const action = value ?? "verify";
+  if (action === "load" || action === "verify") return action;
+  throw new Error(`DESTROYER_STREAM_GLOBAL_ACTION is invalid; received ${action}`);
+}
+
+function hostileRpcBehavior(value: string | undefined): HostileRpcBehavior {
+  const behavior = value ?? "return-without-terminal";
+  if (behavior === "return-without-terminal" || behavior === "throw") return behavior;
+  throw new Error(`DESTROYER_HOSTILE_RPC_BEHAVIOR is invalid; received ${behavior}`);
 }
 
 function leaseContentionAction(value: string | undefined): LeaseContentionAction {

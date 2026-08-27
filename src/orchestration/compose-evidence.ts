@@ -26,6 +26,39 @@ export async function fetchWithTransientRetry(
   throw lastError;
 }
 
+export async function fetchJsonObject(url: string, timeoutMs: number): Promise<Readonly<Record<string, unknown>>> {
+  const response = await fetchWithTransientRetry(() =>
+    fetch(url, { signal: AbortSignal.timeout(Math.min(timeoutMs, 30_000)) })
+  );
+  if (!response.ok) {
+    throw new Error(`${new URL(url).pathname} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  }
+  const value: unknown = await response.json();
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${new URL(url).pathname} did not return a JSON object`);
+  }
+  return value as Readonly<Record<string, unknown>>;
+}
+
+export async function fetchText(url: string, label: string, timeoutMs: number): Promise<string> {
+  const response = await fetchWithTransientRetry(() =>
+    fetch(url, { signal: AbortSignal.timeout(Math.min(timeoutMs, 30_000)) })
+  );
+  if (!response.ok) {
+    throw new Error(`${label} returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  }
+  return response.text();
+}
+
+export function loopbackPortUrl(output: string, label: string): string {
+  const address = output.trim().split("\n")[0]?.trim();
+  const match = /^(?:127\.0\.0\.1|\[::1\]|0\.0\.0\.0|\[::\]):(\d+)$/u.exec(address ?? "");
+  if (match?.[1] === undefined) {
+    throw new Error(`Could not resolve loopback ${label} port from '${output.trim()}'`);
+  }
+  return `http://127.0.0.1:${match[1]}`;
+}
+
 export function parseWindowSuccesses(logs: string): Record<Domain, number> {
   const successes = Object.fromEntries(ALL_DOMAINS.map((domain) => [domain, 0])) as Record<Domain, number>;
   for (const line of logs.split("\n")) {
