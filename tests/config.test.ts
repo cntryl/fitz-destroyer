@@ -142,6 +142,9 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "connect-pipeline-family-rebind",
     "ephemeral-reply-loss-cleanup",
     "saturated-slow-recipient-isolation",
+    "shutdown-reconnect-cleanup-storm",
+    "control-lane-cleanup-under-saturation",
+    "route-family-isolation-matrix",
   ];
 
   // Act

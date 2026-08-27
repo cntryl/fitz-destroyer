@@ -92,6 +92,16 @@ import {
   runWireConformance,
   type WireConformanceCase,
 } from "./workloads/wire-conformance.js";
+import { runShutdownReconnectCleanupStormWorkload } from "./workloads/reliability-session-state.js";
+import {
+  controlLaneReliabilityAction,
+  runControlLaneCleanupUnderSaturationWorkload,
+} from "./workloads/control-lane-cleanup-under-saturation.js";
+import {
+  parseRouteFamilyIdentity,
+  parseRouteFamilyIsolationAction,
+  runRouteFamilyIsolationMatrix,
+} from "./workloads/route-family-isolation-matrix.js";
 
 type WorkerMode =
   | "load"
@@ -144,7 +154,10 @@ type WorkerMode =
   | "ephemeral-reply-loss-verifier"
   | "slow-recipient"
   | "slow-recipient-observer"
-  | "slow-recipient-publisher";
+  | "slow-recipient-publisher"
+  | "shutdown-reconnect-cleanup-storm"
+  | "control-lane-cleanup-under-saturation"
+  | "route-family-isolation-matrix";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -301,7 +314,10 @@ async function runLiveRole(
     liveMode === "session-boundaries" ||
     liveMode === "ephemeral-reply-loss-preparer" ||
     liveMode === "ephemeral-reply-loss-victim" ||
-    liveMode === "slow-recipient"
+    liveMode === "slow-recipient" ||
+    liveMode === "shutdown-reconnect-cleanup-storm" ||
+    liveMode === "control-lane-cleanup-under-saturation" ||
+    liveMode === "route-family-isolation-matrix"
       ? shutdown.signal
       : AbortSignal.any([shutdown.signal, AbortSignal.timeout(jobTimeoutMs)]);
   const options: LiveCommonOptions = {
@@ -391,6 +407,36 @@ async function runLiveRole(
     await runSlowRecipientObserver(client, options, log);
   } else if (liveMode === "slow-recipient-publisher") {
     await runSlowRecipientPublisher(client, options, log);
+  } else if (liveMode === "shutdown-reconnect-cleanup-storm") {
+    await runShutdownReconnectCleanupStormWorkload(
+      client,
+      {
+        ...options,
+        reconnectTimeoutMs: positiveEnv("DESTROYER_RECONNECT_TIMEOUT_MS", jobTimeoutMs),
+      },
+      log,
+    );
+  } else if (liveMode === "control-lane-cleanup-under-saturation") {
+    await runControlLaneCleanupUnderSaturationWorkload(
+      client,
+      {
+        ...options,
+        action: controlLaneReliabilityAction(process.env.DESTROYER_RELIABILITY_ACTION),
+        progressIntervalMs: positiveEnv("DESTROYER_PROGRESS_INTERVAL_MS", 250),
+        reconnectTimeoutMs: positiveEnv("DESTROYER_RECONNECT_TIMEOUT_MS", jobTimeoutMs),
+      },
+      log,
+    );
+  } else if (liveMode === "route-family-isolation-matrix") {
+    await runRouteFamilyIsolationMatrix(
+      client,
+      {
+        ...options,
+        identity: parseRouteFamilyIdentity(process.env.DESTROYER_ROUTE_FAMILY_IDENTITY),
+        action: parseRouteFamilyIsolationAction(process.env.DESTROYER_ROUTE_FAMILY_ACTION),
+      },
+      log,
+    );
   } else if (
     liveMode === "lease-contender" ||
     liveMode === "lease-owner" ||
@@ -853,7 +899,10 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "ephemeral-reply-loss-verifier" ||
     value === "slow-recipient" ||
     value === "slow-recipient-observer" ||
-    value === "slow-recipient-publisher"
+    value === "slow-recipient-publisher" ||
+    value === "shutdown-reconnect-cleanup-storm" ||
+    value === "control-lane-cleanup-under-saturation" ||
+    value === "route-family-isolation-matrix"
   ) {
     return value;
   }

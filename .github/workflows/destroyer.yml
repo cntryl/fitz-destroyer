@@ -101,6 +101,9 @@ jobs:
           - connect-pipeline-family-rebind
           - ephemeral-reply-loss-cleanup
           - saturated-slow-recipient-isolation
+          - shutdown-reconnect-cleanup-storm
+          - control-lane-cleanup-under-saturation
+          - route-family-isolation-matrix
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7

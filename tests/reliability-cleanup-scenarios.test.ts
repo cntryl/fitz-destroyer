@@ -11,6 +11,21 @@ import {
 } from "../src/orchestration/control-lane-cleanup-under-saturation.js";
 import { reliabilityRoutes } from "../src/workloads/reliability-session-state.js";
 import { ALL_DOMAINS } from "../src/workloads/model.js";
+import { roleContainerName } from "../src/orchestration/compose-model.js";
+
+test("should_give_repeated_role_waves_distinct_container_names", () => {
+  // Arrange
+  const project = "fitz-destroyer-run";
+
+  // Act
+  const first = roleContainerName(project, "control-lane-cleanup-under-saturation", 1, 0);
+  const second = roleContainerName(project, "control-lane-cleanup-under-saturation", 2, 0);
+
+  // Assert
+  assert.notEqual(first, second);
+  assert.match(first, /-001-000$/u);
+  assert.match(second, /-002-000$/u);
+});
 
 test("should_require_every_shutdown_cycle_to_drop_readiness_reconnect_and_clear_session_state", () => {
   // Arrange

@@ -8,6 +8,7 @@ import {
 } from "../src/orchestration/route-family-isolation-matrix.js";
 import {
   decodeRouteFamilyPayload,
+  routeFamilyIsolationPermissions,
   routeFamilyIsolationRoutes,
 } from "../src/workloads/route-family-isolation-matrix.js";
 import { ALL_DOMAINS } from "../src/workloads/model.js";
@@ -40,6 +41,19 @@ test("should_retain_the_route_family_identity_in_every_workload_payload", () => 
     () => decodeRouteFamilyPayload(new TextEncoder().encode("route-family:identity-c:survivor")),
     /invalid route-family payload/u,
   );
+});
+
+test("should_keep_mutations_scoped_while_allowing_schedule_list_authorization", () => {
+  // Arrange
+  const namespace = "matrix-realm";
+
+  // Act
+  const permissions = routeFamilyIsolationPermissions(namespace);
+
+  // Assert
+  assert.ok(permissions.includes("schedule://**#read"));
+  assert.ok(permissions.includes(`schedule://${namespace}/**#*`));
+  assert.ok(!permissions.includes("schedule://**#write"));
 });
 
 test("should_reject_holder_evidence_with_cross_family_delivery", () => {

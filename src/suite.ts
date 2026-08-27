@@ -47,6 +47,9 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "connect-pipeline-family-rebind",
   "ephemeral-reply-loss-cleanup",
   "saturated-slow-recipient-isolation",
+  "shutdown-reconnect-cleanup-storm",
+  "control-lane-cleanup-under-saturation",
+  "route-family-isolation-matrix",
 ];
 
 export type SuiteSummary = {

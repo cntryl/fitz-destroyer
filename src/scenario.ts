@@ -41,6 +41,9 @@ import {
 } from "./orchestration/wire-conformance.js";
 import { runEphemeralReplyLossCleanupScenario } from "./orchestration/ephemeral-reply-loss-cleanup.js";
 import { runSaturatedSlowRecipientIsolationScenario } from "./orchestration/saturated-slow-recipient-isolation.js";
+import { runShutdownReconnectCleanupStormScenario } from "./orchestration/shutdown-reconnect-cleanup-storm.js";
+import { runControlLaneCleanupUnderSaturationScenario } from "./orchestration/control-lane-cleanup-under-saturation.js";
+import { runRouteFamilyIsolationMatrixScenario } from "./orchestration/route-family-isolation-matrix.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -317,6 +320,12 @@ async function executeWorkload(
     await runEphemeralReplyLossCleanupScenario(stack, config, shape, artifacts);
   } else if (scenario === "saturated-slow-recipient-isolation") {
     await runSaturatedSlowRecipientIsolationScenario(stack, config, shape, artifacts);
+  } else if (scenario === "shutdown-reconnect-cleanup-storm") {
+    await runShutdownReconnectCleanupStormScenario(stack, config, shape, artifacts);
+  } else if (scenario === "control-lane-cleanup-under-saturation") {
+    await runControlLaneCleanupUnderSaturationScenario(stack, config, shape, artifacts);
+  } else if (scenario === "route-family-isolation-matrix") {
+    await runRouteFamilyIsolationMatrixScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

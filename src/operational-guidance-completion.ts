@@ -98,6 +98,18 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     fields: [["published", "Notice publications"], ["received", "Healthy deliveries"], ["siblingCanaryDomains", "Sibling canary domains"]],
     bandwidthFields: [["bytesPublished", "Notice bytes published"]],
   },
+  "shutdown-reconnect-cleanup-storm": {
+    event: "shutdown_reconnect_cleanup_storm_complete",
+    fields: [["cycles", "Shutdown cycles"], ["reconnects", "Client reconnects"], ["staleHandleRejections", "Stale handles rejected"]],
+  },
+  "control-lane-cleanup-under-saturation": {
+    event: "control_lane_cleanup_under_saturation_complete",
+    fields: [["targets", "Cleanup targets"], ["canaryOperationsPerDomain", "Canary operations per domain"]],
+  },
+  "route-family-isolation-matrix": {
+    event: "route_family_isolation_matrix_complete",
+    fields: [["identities", "Route families"], ["domains", "Isolated domains"], ["holderDomainChecks", "Holder domain checks"], ["probeDomainChecks", "Probe domain checks"], ["crossFamilyDeliveries", "Cross-family deliveries"]],
+  },
 };
 
 export function completionMetricsForScenario(

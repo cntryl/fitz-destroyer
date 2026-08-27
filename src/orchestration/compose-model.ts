@@ -46,13 +46,25 @@ export type LiveRole =
   | "ephemeral-reply-loss-verifier"
   | "slow-recipient"
   | "slow-recipient-observer"
-  | "slow-recipient-publisher";
+  | "slow-recipient-publisher"
+  | "shutdown-reconnect-cleanup-storm"
+  | "control-lane-cleanup-under-saturation"
+  | "route-family-isolation-matrix";
 
 export type RoleContainer = {
   id: string;
   name: string;
   workerId: string;
 };
+
+export function roleContainerName(
+  project: string,
+  role: LiveRole,
+  wave: number,
+  replica: number,
+): string {
+  return `${project}-${role}-${wave.toString().padStart(3, "0")}-${replica.toString().padStart(3, "0")}`;
+}
 
 export type ContainerState = {
   status: string;

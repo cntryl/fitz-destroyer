@@ -342,6 +342,9 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "connect-pipeline-family-rebind") return [{ event: "connect_pipeline_family_rebind_complete", transports: 2, accepted: 1, rejected: 1, elapsedMs: 1_000 }];
   if (scenario === "ephemeral-reply-loss-cleanup") return [{ event: "ephemeral_reply_loss_cleanup_complete", lostReplies: 12, queueRedelivered: 1, kvTransactions: 1, streamSessions: 1, noticeDeliveries: 1, scheduleSubscriptions: 1, leaseRoutesReacquired: 2, rpcCallsCompleted: 1, elapsedMs: 1_000 }];
   if (scenario === "saturated-slow-recipient-isolation") return [{ event: "saturated_slow_recipient_isolation_complete", published: 512, received: 512, bytesPublished: 30_720_000, siblingCanaryDomains: 7, elapsedMs: 1_000 }];
+  if (scenario === "shutdown-reconnect-cleanup-storm") return [{ event: "shutdown_reconnect_cleanup_storm_complete", cycles: 2, reconnects: 8, staleHandleRejections: 32, elapsedMs: 1_000 }];
+  if (scenario === "control-lane-cleanup-under-saturation") return [{ event: "control_lane_cleanup_under_saturation_complete", targets: 4, canaryOperationsPerDomain: 1, elapsedMs: 1_000 }];
+  if (scenario === "route-family-isolation-matrix") return [{ event: "route_family_isolation_matrix_complete", identities: 2, domains: 7, holderDomainChecks: 14, probeDomainChecks: 14, crossFamilyDeliveries: 0, elapsedMs: 1_000 }];
   return [];
 }
 

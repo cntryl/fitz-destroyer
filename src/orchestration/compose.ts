@@ -38,6 +38,7 @@ import {
   type ContainerState,
   type LiveRole,
   type RoleContainer,
+  roleContainerName,
 } from "./compose-model.js";
 import { executeDiskFiller, executeRecoveryJob } from "./compose-jobs.js";
 import { executeUpgradeReplacement } from "./compose-upgrade.js";
@@ -52,6 +53,7 @@ export class ComposeStack {
   readonly #composeFiles: readonly string[];
   readonly #targetFitzImage: string;
   #jobSequence = 0;
+  #roleSequence = 0;
   #metricsUrl: string | undefined;
 
   constructor(
@@ -89,7 +91,9 @@ export class ComposeStack {
       DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
       DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
       DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
-      ...(config.scenario === "authorization-isolation" || config.scenario === "connect-pipeline-family-rebind"
+      ...(config.scenario === "authorization-isolation" ||
+        config.scenario === "connect-pipeline-family-rebind" ||
+        config.scenario === "route-family-isolation-matrix"
         ? {
             FITZ_AUTH_REQUIRED: "true",
             FITZ_ASSUME_EXTERNAL_TLS: "true",
@@ -790,10 +794,12 @@ export class ComposeStack {
     shape: WorkloadShape,
     extraEnv: Readonly<Record<string, string>> = {},
   ): Promise<RoleContainer[]> {
+    this.#roleSequence += 1;
+    const wave = this.#roleSequence;
     const containers: RoleContainer[] = [];
     for (let index = 0; index < replicas; index += 1) {
       const workerId = String(index);
-      const name = `${this.#project}-${role}-${index.toString().padStart(3, "0")}`;
+      const name = roleContainerName(this.#project, role, wave, index);
       const environment = {
         DESTROYER_MODE: role,
         DESTROYER_NAMESPACE: shape.namespace,

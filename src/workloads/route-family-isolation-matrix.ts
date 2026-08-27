@@ -43,7 +43,12 @@ export function routeFamilyIsolationRoutes(namespace: string): IsolationRoutes {
 }
 
 export function routeFamilyIsolationPermissions(namespace: string): string[] {
-  return ALL_DOMAINS.map((domain) => `${domain}://${namespace}/**#*`);
+  return [
+    ...ALL_DOMAINS.map((domain) => `${domain}://${namespace}/**#*`),
+    // Schedule LIST_PAGE is a wildcard protocol operation. The selector lives
+    // in its payload, so authorization is evaluated against schedule://**.
+    "schedule://**#read",
+  ];
 }
 
 export function routeFamilyPayload(

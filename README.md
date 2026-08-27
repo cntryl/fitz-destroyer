@@ -110,6 +110,24 @@ socket while publishing at least 30 MiB of Notice payloads. A healthy observer
 and seven-domain canaries must make exact progress, and the paused route must
 retire cleanly after the pressure phase.
 
+`shutdown-reconnect-cleanup-storm` repeatedly arms connection-bound state in
+all seven domains while Fitz begins graceful shutdown. Readiness must become
+unavailable, every client must reconnect after the bounded restart, stale
+handles must reject, durable partial work must reconcile, and no ephemeral
+registrations, workers, holders, or waiters may survive.
+
+`control-lane-cleanup-under-saturation` continuously exercises every domain's
+normal work lane while separate clients hold Queue reservations, KV and Stream
+sessions, subscriptions, Lease ownership, and RPC workers. Killing those
+clients must finish cleanup before saturation stops, while both the saturated
+routes and an independent seven-domain canary continue progressing.
+
+`route-family-isolation-matrix` gives two authenticated identities identical
+route strings across Queue, KV, Stream, Schedule, Notice, Lease, and RPC. Each
+family must retain its own durable state and live delivery; killing one holder
+must clean only that family's ephemeral state while the other family remains
+fully usable.
+
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through
 small pages. It requires exact global offsets, resource-local offsets, routes,
@@ -464,7 +482,7 @@ host controls faults; no container receives the Docker socket.
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|shutdown-reconnect-cleanup-storm|control-lane-cleanup-under-saturation|route-family-isolation-matrix|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
