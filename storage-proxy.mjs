@@ -45,15 +45,16 @@ const controlServer = http.createServer(async (request, response) => {
       const body = JSON.parse(await readBody(request));
       const mode = body?.mode;
       const latencyMs = body?.latencyMs ?? 0;
-      if (!["healthy", "latency", "reset", "partition", "blackhole", "downstream-drop"].includes(mode)) {
+      if (!["healthy", "latency", "reset", "partition", "blackhole", "downstream-drop", "downstream-pause"].includes(mode)) {
         throw new Error(
-          "mode must be healthy, latency, reset, partition, blackhole, or downstream-drop",
+          "mode must be healthy, latency, reset, partition, blackhole, downstream-drop, or downstream-pause",
         );
       }
       if (!Number.isSafeInteger(latencyMs) || latencyMs < 0 || latencyMs > 60_000) {
         throw new Error("latencyMs must be an integer between 0 and 60000");
       }
       fault = { mode, latencyMs: mode === "latency" ? latencyMs : 0 };
+      for (const connection of connections) applyDownstreamReadState(connection);
       if (mode === "reset" || mode === "partition" || mode === "healthy") {
         for (const connection of [...connections]) closeConnection(connection);
       }
@@ -82,6 +83,7 @@ function connectUpstream(connection) {
   upstream.on("connect", () => {
     forward(connection, connection.client, upstream, "upstream");
     forward(connection, upstream, connection.client, "downstream");
+    applyDownstreamReadState(connection);
   });
   upstream.on("error", () => closeConnection(connection));
   upstream.on("close", () => closeConnection(connection));
@@ -96,7 +98,8 @@ function forward(connection, source, destination, direction) {
     if (
       fault.mode === "partition" ||
       fault.mode === "blackhole" ||
-      (fault.mode === "downstream-drop" && direction === "downstream")
+      ((fault.mode === "downstream-drop" || fault.mode === "downstream-pause") &&
+        direction === "downstream")
     ) return;
     if (fault.mode === "latency" && fault.latencyMs > 0) {
       const timer = setTimeout(() => {
@@ -109,6 +112,12 @@ function forward(connection, source, destination, direction) {
     if (!destination.destroyed) destination.write(chunk);
   });
   source.on("end", () => destination.end());
+}
+
+function applyDownstreamReadState(connection) {
+  if (connection.upstream === undefined || connection.upstream.destroyed) return;
+  if (fault.mode === "downstream-pause") connection.upstream.pause();
+  else connection.upstream.resume();
 }
 
 function closeConnection(connection) {

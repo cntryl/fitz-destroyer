@@ -4,6 +4,7 @@ import type { EventRecord, MetricCollections } from "./operational-guidance.js";
 type CompletionConfig = {
   event: string;
   fields: readonly (readonly [string, string])[];
+  bandwidthFields?: readonly (readonly [string, string])[];
   recoveryField?: string;
 };
 
@@ -76,6 +77,27 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "cache_and_disk_exhaustion_complete",
     fields: [["rejectedMutations", "Exhaustion rejections"], ["verified", "Recovered baseline records"]],
   },
+  "lease-route-aliasing": {
+    event: "lease_route_aliasing_complete",
+    fields: [["operations", "Trailing-route operations"], ["rejected", "Rejected trailing routes"], ["canonicalPreserved", "Canonical leases preserved"]],
+  },
+  "tcp-preauth-framing-slowloris": {
+    event: "tcp_preauth_framing_slowloris_complete",
+    fields: [["socketsOpened", "Pre-auth sockets opened"], ["socketsClosed", "Pre-auth sockets closed"], ["secondWaveAdmitted", "Second-wave admissions"], ["tcpCanary", "TCP canaries"], ["websocketCanary", "WebSocket canaries"]],
+  },
+  "connect-pipeline-family-rebind": {
+    event: "connect_pipeline_family_rebind_complete",
+    fields: [["transports", "Combined-frame transports"], ["accepted", "Atomically accepted pipelines"], ["rejected", "Atomically rejected pipelines"]],
+  },
+  "ephemeral-reply-loss-cleanup": {
+    event: "ephemeral_reply_loss_cleanup_complete",
+    fields: [["lostReplies", "Lost setup replies"], ["queueRedelivered", "Queue reservations recovered"], ["kvTransactions", "KV transactions recovered"], ["streamSessions", "Stream sessions recovered"], ["noticeDeliveries", "Notice subscriptions recovered"], ["scheduleSubscriptions", "Schedule subscriptions recovered"], ["leaseRoutesReacquired", "Lease routes reacquired"], ["rpcCallsCompleted", "RPC workers recovered"]],
+  },
+  "saturated-slow-recipient-isolation": {
+    event: "saturated_slow_recipient_isolation_complete",
+    fields: [["published", "Notice publications"], ["received", "Healthy deliveries"], ["siblingCanaryDomains", "Sibling canary domains"]],
+    bandwidthFields: [["bytesPublished", "Notice bytes published"]],
+  },
 };
 
 export function completionMetricsForScenario(
@@ -119,12 +141,26 @@ export function completionMetricsForScenario(
       durationMs: count(complete[config.recoveryField], config.recoveryField),
     });
   }
+  const bandwidth = durationMs === null
+    ? []
+    : (config.bandwidthFields ?? []).map(([key, label]) => {
+        const bytes = count(complete[key], key);
+        return {
+          kind: "bandwidth" as const,
+          key,
+          label,
+          bytes,
+          durationMs,
+          bytesPerSecond: Math.round((bytes / (durationMs / 1_000)) * 100) / 100,
+          completionSemantics: semantics,
+        };
+      });
   return {
     completionSemantics: counts.map(({ key }) => ({ key, label: semantics })),
     counts,
     rates,
     latencies: [],
-    bandwidth: [],
+    bandwidth,
     recoveries,
   };
 }

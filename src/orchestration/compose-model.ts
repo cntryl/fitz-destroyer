@@ -39,7 +39,14 @@ export type LiveRole =
   | "hostile-rpc-worker"
   | "hostile-rpc-caller"
   | "route-cardinality-churn"
-  | "exhaustion-probe";
+  | "exhaustion-probe"
+  | "wire-conformance"
+  | "ephemeral-reply-loss-preparer"
+  | "ephemeral-reply-loss-victim"
+  | "ephemeral-reply-loss-verifier"
+  | "slow-recipient"
+  | "slow-recipient-observer"
+  | "slow-recipient-publisher";
 
 export type RoleContainer = {
   id: string;

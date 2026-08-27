@@ -42,6 +42,11 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "transaction-contention",
   "stream-replay",
   "live-churn",
+  "lease-route-aliasing",
+  "tcp-preauth-framing-slowloris",
+  "connect-pipeline-family-rebind",
+  "ephemeral-reply-loss-cleanup",
+  "saturated-slow-recipient-isolation",
 ];
 
 export type SuiteSummary = {

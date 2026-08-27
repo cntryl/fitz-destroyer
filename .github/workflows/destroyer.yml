@@ -96,6 +96,11 @@ jobs:
           - transaction-contention
           - stream-replay
           - live-churn
+          - lease-route-aliasing
+          - tcp-preauth-framing-slowloris
+          - connect-pipeline-family-rebind
+          - ephemeral-reply-loss-cleanup
+          - saturated-slow-recipient-isolation
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7

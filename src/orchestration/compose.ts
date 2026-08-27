@@ -89,7 +89,7 @@ export class ComposeStack {
       DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
       DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
       DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
-      ...(config.scenario === "authorization-isolation"
+      ...(config.scenario === "authorization-isolation" || config.scenario === "connect-pipeline-family-rebind"
         ? {
             FITZ_AUTH_REQUIRED: "true",
             FITZ_ASSUME_EXTERNAL_TLS: "true",

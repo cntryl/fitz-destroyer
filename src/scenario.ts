@@ -34,6 +34,13 @@ import { runOutboundBlackholeScenario } from "./orchestration/outbound-blackhole
 import { runBrokerPauseScenario } from "./orchestration/broker-pause.js";
 import { runRouteCardinalityChurnScenario } from "./orchestration/route-cardinality-churn.js";
 import { runCacheAndDiskExhaustionScenario } from "./orchestration/cache-and-disk-exhaustion.js";
+import {
+  runConnectPipelineFamilyRebindScenario,
+  runLeaseRouteAliasingScenario,
+  runTcpPreauthFramingSlowlorisScenario,
+} from "./orchestration/wire-conformance.js";
+import { runEphemeralReplyLossCleanupScenario } from "./orchestration/ephemeral-reply-loss-cleanup.js";
+import { runSaturatedSlowRecipientIsolationScenario } from "./orchestration/saturated-slow-recipient-isolation.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -300,6 +307,16 @@ async function executeWorkload(
     await runLiveChurnScenario(stack, config, shape, artifacts);
   } else if (scenario === "chaos") {
     await runChaos(stack, config, artifacts);
+  } else if (scenario === "lease-route-aliasing") {
+    await runLeaseRouteAliasingScenario(stack, config, shape, artifacts);
+  } else if (scenario === "tcp-preauth-framing-slowloris") {
+    await runTcpPreauthFramingSlowlorisScenario(stack, config, shape, artifacts);
+  } else if (scenario === "connect-pipeline-family-rebind") {
+    await runConnectPipelineFamilyRebindScenario(stack, config, shape, artifacts);
+  } else if (scenario === "ephemeral-reply-loss-cleanup") {
+    await runEphemeralReplyLossCleanupScenario(stack, config, shape, artifacts);
+  } else if (scenario === "saturated-slow-recipient-isolation") {
+    await runSaturatedSlowRecipientIsolationScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

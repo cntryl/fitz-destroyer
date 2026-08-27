@@ -139,6 +139,20 @@ test("should_extract_metrics_from_every_scenario_fixture", async () => {
   }
 });
 
+test("should_report_slow_recipient_bytes_as_bandwidth", async () => {
+  // Arrange
+  const directory = await mkdtemp(join(tmpdir(), "fitz-destroyer-bandwidth-"));
+  await writeEvents(directory, fixtureEvents("saturated-slow-recipient-isolation"));
+
+  // Act
+  const guidance = await extractOperationalGuidance(directory, "saturated-slow-recipient-isolation", 1_000);
+
+  // Assert
+  assert.equal(guidance.bandwidth[0]?.bytes, 30_720_000);
+  assert.equal(guidance.bandwidth[0]?.bytesPerSecond, 30_720_000);
+  await rm(directory, { recursive: true, force: true });
+});
+
 test("should_degrade_malformed_or_incomplete_evidence_to_not_rated", async () => {
   const eventDirectory = await mkdtemp(join(tmpdir(), "fitz-destroyer-malformed-events-"));
   const pressureDirectory = await mkdtemp(join(tmpdir(), "fitz-destroyer-incomplete-pressure-"));
@@ -323,6 +337,11 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "transaction-contention") return [{ event: "transaction_contention_complete", conflicts: 1, elapsedMs: 1_000 }];
   if (scenario === "stream-replay") return [{ event: "stream_replay_complete", records: 20, pages: 2, boundaryBytes: 60_000, elapsedMs: 1_000 }];
   if (scenario === "live-churn") return [{ event: "live_churn_complete", phases: [{ phase: "notice-rpc", elapsedMs: 400 }], elapsedMs: 1_000 }];
+  if (scenario === "lease-route-aliasing") return [{ event: "lease_route_aliasing_complete", operations: 6, rejected: 6, canonicalPreserved: 6, elapsedMs: 1_000 }];
+  if (scenario === "tcp-preauth-framing-slowloris") return [{ event: "tcp_preauth_framing_slowloris_complete", socketsOpened: 16, socketsClosed: 16, secondWaveAdmitted: 8, tcpCanary: 1, websocketCanary: 1, elapsedMs: 1_000 }];
+  if (scenario === "connect-pipeline-family-rebind") return [{ event: "connect_pipeline_family_rebind_complete", transports: 2, accepted: 1, rejected: 1, elapsedMs: 1_000 }];
+  if (scenario === "ephemeral-reply-loss-cleanup") return [{ event: "ephemeral_reply_loss_cleanup_complete", lostReplies: 12, queueRedelivered: 1, kvTransactions: 1, streamSessions: 1, noticeDeliveries: 1, scheduleSubscriptions: 1, leaseRoutesReacquired: 2, rpcCallsCompleted: 1, elapsedMs: 1_000 }];
+  if (scenario === "saturated-slow-recipient-isolation") return [{ event: "saturated_slow_recipient_isolation_complete", published: 512, received: 512, bytesPublished: 30_720_000, siblingCanaryDomains: 7, elapsedMs: 1_000 }];
   return [];
 }
 

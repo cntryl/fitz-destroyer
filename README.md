@@ -84,6 +84,32 @@ the same KV route and key but must recover their own value, while operations in
 an ungranted realm must return a permission error. Tokens and the HMAC key are
 generated only for the disposable local Compose stack.
 
+`lease-route-aliasing` sends raw Lease requests for every operation with an
+extra path segment. Each request must return a bounded protocol rejection while
+the exact three-segment canonical Lease remains held and reusable.
+
+`tcp-preauth-framing-slowloris` holds many TCP sessions before CONNECT, using
+empty and incomplete outer frames. Every session must close at the
+authentication deadline, a second connection wave must be admitted, and both
+TCP and WebSocket canaries must complete. This is transport deadline
+conformance, not a capacity benchmark.
+
+`connect-pipeline-family-rebind` sends CONNECT and a Queue mutation in one
+WebSocket frame and one TCP frame for an identity mapped to RouteFamily 2. The
+mutation and reply must both remain in family 2, or the entire operation must
+be rejected atomically with no Queue side effect in either family.
+
+`ephemeral-reply-loss-cleanup` creates Queue reservations and watches, KV
+transactions and watches, Stream sessions and subscriptions, Notice and
+Schedule subscriptions, Lease holders and waiters, and an RPC worker, then
+drops setup replies before killing the clients. Server-side state must quiesce
+and every route must be reusable from a fresh client.
+
+`saturated-slow-recipient-isolation` pauses reads on one real downstream
+socket while publishing at least 30 MiB of Notice payloads. A healthy observer
+and seven-domain canaries must make exact progress, and the paused route must
+retire cleanly after the pressure phase.
+
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through
 small pages. It requires exact global offsets, resource-local offsets, routes,
@@ -438,7 +464,7 @@ host controls faults; no container receives the Docker socket.
 ## Options
 
 ```text
-fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain

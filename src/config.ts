@@ -40,6 +40,11 @@ export type ScenarioName =
   | "transaction-contention"
   | "stream-replay"
   | "live-churn"
+  | "lease-route-aliasing"
+  | "tcp-preauth-framing-slowloris"
+  | "connect-pipeline-family-rebind"
+  | "ephemeral-reply-loss-cleanup"
+  | "saturated-slow-recipient-isolation"
   | "all";
 export type ScaleName = "smoke" | "standard" | "large";
 export type ClientProfile = "end-to-end" | "broker-isolation";
@@ -125,7 +130,7 @@ export type RunConfig = Scale & {
   destroyerImage: string | undefined;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -385,6 +390,11 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "transaction-contention" ||
     value === "stream-replay" ||
     value === "live-churn" ||
+    value === "lease-route-aliasing" ||
+    value === "tcp-preauth-framing-slowloris" ||
+    value === "connect-pipeline-family-rebind" ||
+    value === "ephemeral-reply-loss-cleanup" ||
+    value === "saturated-slow-recipient-isolation" ||
     value === "all"
   );
 }

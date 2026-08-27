@@ -134,6 +134,23 @@ test("should_accept_bucket_three_scenarios_and_upgrade_source", () => {
   }
 });
 
+test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
+  // Arrange
+  const scenarios = [
+    "lease-route-aliasing",
+    "tcp-preauth-framing-slowloris",
+    "connect-pipeline-family-rebind",
+    "ephemeral-reply-loss-cleanup",
+    "saturated-slow-recipient-isolation",
+  ];
+
+  // Act
+  const parsed = scenarios.map((scenario) => parseArgs([scenario], {}).scenario);
+
+  // Assert
+  assert.deepEqual(parsed, scenarios);
+});
+
 test("should_reject_removed_reuse_images_option", () => {
   assert.throws(() => parseArgs(["clean-restart", "--reuse-images"], {}), /Missing value/);
 });

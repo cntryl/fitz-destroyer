@@ -80,6 +80,18 @@ import {
 } from "./workloads/hostile-rpc-worker.js";
 import { runRouteCardinalityChurn } from "./workloads/route-cardinality-churn.js";
 import { runExhaustionProbe } from "./workloads/exhaustion-probe.js";
+import {
+  runEphemeralReplyLoss,
+} from "./workloads/ephemeral-reply-loss.js";
+import {
+  runSlowRecipient,
+  runSlowRecipientObserver,
+  runSlowRecipientPublisher,
+} from "./workloads/slow-recipient-isolation.js";
+import {
+  runWireConformance,
+  type WireConformanceCase,
+} from "./workloads/wire-conformance.js";
 
 type WorkerMode =
   | "load"
@@ -125,7 +137,14 @@ type WorkerMode =
   | "hostile-rpc-worker"
   | "hostile-rpc-caller"
   | "route-cardinality-churn"
-  | "exhaustion-probe";
+  | "exhaustion-probe"
+  | "wire-conformance"
+  | "ephemeral-reply-loss-preparer"
+  | "ephemeral-reply-loss-victim"
+  | "ephemeral-reply-loss-verifier"
+  | "slow-recipient"
+  | "slow-recipient-observer"
+  | "slow-recipient-publisher";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -159,6 +178,18 @@ async function main(): Promise<void> {
       signal,
       log,
     );
+    return;
+  }
+  if (mode === "wire-conformance") {
+    await runWireConformance({
+      namespace: routeSegment(requiredEnv("DESTROYER_NAMESPACE")),
+      requestTimeoutMs,
+      operations: positiveEnv("DESTROYER_OPERATIONS", 100),
+      clientReplicas: positiveEnv("DESTROYER_CLIENT_REPLICAS", 4),
+      wireCase: wireConformanceCase(process.env.DESTROYER_WIRE_CASE),
+      url: process.env.DESTROYER_WIRE_URL ?? "ws://fitz:4090/ws",
+      log,
+    });
     return;
   }
   const client = makeClient(mode !== "load" && mode !== "verify");
@@ -212,7 +243,11 @@ function makeClient(reconnect: boolean): Client {
       maxBackoffMs: 2_000,
     },
     retry: { enabled: reconnect, maxAttempts: 3, backoffMs: 50, maxBackoffMs: 500 },
-    heartbeat: { enabled: true, intervalMs: 2_000, timeoutMs: 6_000 },
+    heartbeat: {
+      enabled: booleanEnv("DESTROYER_HEARTBEAT_ENABLED", true),
+      intervalMs: 2_000,
+      timeoutMs: 6_000,
+    },
     maxFrameSize: 8 * 1024 * 1024,
     maxInFlightRequests: 1_024,
     maxRequestQueueSize: 16_384,
@@ -263,7 +298,10 @@ async function runLiveRole(
     liveMode === "hostile-rpc-worker" ||
     liveMode === "schedule-subscriber" ||
     liveMode === "schedule-outage-subscriber" ||
-    liveMode === "session-boundaries"
+    liveMode === "session-boundaries" ||
+    liveMode === "ephemeral-reply-loss-preparer" ||
+    liveMode === "ephemeral-reply-loss-victim" ||
+    liveMode === "slow-recipient"
       ? shutdown.signal
       : AbortSignal.any([shutdown.signal, AbortSignal.timeout(jobTimeoutMs)]);
   const options: LiveCommonOptions = {
@@ -336,6 +374,23 @@ async function runLiveRole(
     await runRouteCardinalityChurn(client, options, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
+  } else if (
+    liveMode === "ephemeral-reply-loss-preparer" ||
+    liveMode === "ephemeral-reply-loss-victim" ||
+    liveMode === "ephemeral-reply-loss-verifier"
+  ) {
+    const action = liveMode === "ephemeral-reply-loss-preparer"
+      ? "prepare"
+      : liveMode === "ephemeral-reply-loss-victim"
+        ? "victim"
+        : "verify";
+    await runEphemeralReplyLoss(client, { ...options, action }, log);
+  } else if (liveMode === "slow-recipient") {
+    await runSlowRecipient(client, options, log);
+  } else if (liveMode === "slow-recipient-observer") {
+    await runSlowRecipientObserver(client, options, log);
+  } else if (liveMode === "slow-recipient-publisher") {
+    await runSlowRecipientPublisher(client, options, log);
   } else if (
     liveMode === "lease-contender" ||
     liveMode === "lease-owner" ||
@@ -791,7 +846,14 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "hostile-rpc-worker" ||
     value === "hostile-rpc-caller" ||
     value === "route-cardinality-churn" ||
-    value === "exhaustion-probe"
+    value === "exhaustion-probe" ||
+    value === "wire-conformance" ||
+    value === "ephemeral-reply-loss-preparer" ||
+    value === "ephemeral-reply-loss-victim" ||
+    value === "ephemeral-reply-loss-verifier" ||
+    value === "slow-recipient" ||
+    value === "slow-recipient-observer" ||
+    value === "slow-recipient-publisher"
   ) {
     return value;
   }
@@ -808,6 +870,17 @@ function authorizationIsolationAction(value: string | undefined): AuthorizationI
   const action = value ?? "verify";
   if (action === "write" || action === "verify") return action;
   throw new Error(`DESTROYER_AUTH_ACTION is invalid; received ${action}`);
+}
+
+function wireConformanceCase(value: string | undefined): WireConformanceCase {
+  if (
+    value === "lease-route-aliasing" ||
+    value === "tcp-preauth-framing-slowloris" ||
+    value === "connect-pipeline-family-rebind"
+  ) {
+    return value;
+  }
+  throw new Error(`DESTROYER_WIRE_CASE is invalid; received ${value ?? "unset"}`);
 }
 
 function streamGlobalRecoveryAction(value: string | undefined): StreamGlobalRecoveryAction {

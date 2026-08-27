@@ -4,4 +4,5 @@ export type FaultProxyFault =
   | { mode: "reset" }
   | { mode: "partition" }
   | { mode: "blackhole" }
-  | { mode: "downstream-drop" };
+  | { mode: "downstream-drop" }
+  | { mode: "downstream-pause" };
