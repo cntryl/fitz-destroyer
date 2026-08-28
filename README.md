@@ -156,9 +156,10 @@ connection must continue from the prior global cursor without gaps or duplicates
 family-actor shard, continuously fills one family's Notice lane, and requires
 every sibling-family delivery canary to complete within the request timeout.
 
-`actor-supervision-failpoint` explicitly enables a Destroyer-only broker hook,
-panics the Notice domain actor, requires readiness withdrawal and bounded drain,
-then restarts Fitz and verifies exact Notice fanout recovery.
+`actor-supervision-failpoint` explicitly enables Destroyer-only broker hooks,
+panics the Notice and Queue domain actors one process at a time, requires each
+panic to withdraw readiness and drain, then verifies exact Notice fanout and
+Queue delivery/completion after clean-process restarts.
 
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through

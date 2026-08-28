@@ -4,11 +4,12 @@ import { assertActorSupervisionEvidence } from "../src/orchestration/actor-super
 
 test("should_require_fail_closed_actor_supervision_and_restart_recovery", () => {
   // Arrange
-  const evidence = { injected: true, readinessWithdrawn: true, restartRecovered: true, canaryDeliveries: 4, expectedCanaryDeliveries: 4 };
+  const evidence = { domainsInjected: 2, readinessWithdrawals: 2, restartsRecovered: 2, canaryDeliveries: 4, expectedCanaryDeliveries: 4, queueRecovered: 1, expectedQueueRecovered: 1 };
 
   // Act
   // Assert
   assert.doesNotThrow(() => assertActorSupervisionEvidence(evidence));
-  assert.throws(() => assertActorSupervisionEvidence({ ...evidence, readinessWithdrawn: false }), /withdraw readiness/u);
+  assert.throws(() => assertActorSupervisionEvidence({ ...evidence, readinessWithdrawals: 1 }), /readiness withdrawals/u);
   assert.throws(() => assertActorSupervisionEvidence({ ...evidence, canaryDeliveries: 3 }), /recovery canary/u);
+  assert.throws(() => assertActorSupervisionEvidence({ ...evidence, queueRecovered: 0 }), /Queue recovery/u);
 });
