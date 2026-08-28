@@ -5,12 +5,14 @@ import {
   latencySummary,
   mergeLatencyHistograms,
   reconcileQueueOutcomes,
+  rssGrowthAssessment,
   type LatencyHistogram,
   type NormalizedErrorClass,
   type PressureBrokerSample,
   type PressureWarning,
   type QueueClientOutcome,
   type QueueReconciliation,
+  type RssGrowthAssessment,
   type StageMetrics,
 } from "../pressure.js";
 import { ALL_DOMAINS, type Domain, type WorkloadShape } from "../workloads/model.js";
@@ -56,6 +58,7 @@ export type PressureEvidence = {
     routerBackpressureDelta: number;
     routerHighLaneBackpressureDelta: number;
   };
+  rssGrowthAssessment: RssGrowthAssessment;
   warnings: readonly PressureWarning[];
   assertionFailures: readonly string[];
 };
@@ -166,7 +169,12 @@ export async function runPressureScenario(
       })),
     ),
   );
-  const warnings = diagnosticWarnings(warningInputs, samples, config.requestTimeoutMs);
+  const warnings = diagnosticWarnings(
+    warningInputs,
+    samples,
+    config.requestTimeoutMs,
+    config.bombardDomains,
+  );
   for (const warning of warnings) {
     await artifacts.event("pressure_diagnostic_warning", warning);
   }
@@ -184,6 +192,7 @@ export async function runPressureScenario(
     queueReconciliation,
     brokerSnapshots: samples,
     brokerSummary: summarizeBrokerSnapshots(samples),
+    rssGrowthAssessment: rssGrowthAssessment(config.bombardDomains),
     warnings,
     assertionFailures,
   };

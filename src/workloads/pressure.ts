@@ -1,5 +1,43 @@
 import type { Client } from "@cntryl/fitz";
 import type { LiveLog } from "./live.js";
+import type { Domain } from "./model.js";
+
+export function pressureValue(
+  namespace: string,
+  worker: string,
+  domain: Domain,
+  counter: number,
+): Uint8Array {
+  return new TextEncoder().encode(
+    `${namespace}:${worker}:${domain}:${counter.toString().padStart(12, "0")}`,
+  );
+}
+
+export function pressureKvWrite(
+  namespace: string,
+  worker: string,
+  counter: number,
+): { key: Uint8Array; value: Uint8Array } {
+  return {
+    key: pressureValue(namespace, worker, "kv", 0),
+    value: pressureValue(namespace, worker, "kv", counter + 1),
+  };
+}
+
+export function pressureStreamWrite(
+  namespace: string,
+  worker: string,
+  counter: number,
+): { route: string; expectedOffset: bigint } {
+  return {
+    route: `stream://destroyer/${namespace}/${worker}-stream`,
+    expectedOffset: BigInt(counter),
+  };
+}
+
+export function pressureScheduleRoute(namespace: string, worker: string): string {
+  return `schedule://destroyer/${namespace}/${worker}/job`;
+}
 
 export type PressureReconcileOptions = {
   namespace: string;

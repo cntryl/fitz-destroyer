@@ -113,7 +113,7 @@ export function completionSemanticsForDomain(domain: Domain): string {
   if (domain === "queue") return "completed Queue enqueue/reserve/completion loops";
   if (domain === "kv") return "committed KV transactions";
   if (domain === "stream") return "committed Stream append sessions";
-  if (domain === "schedule") return "accepted durable Schedule definitions";
+  if (domain === "schedule") return "accepted durable Schedule upserts";
   if (domain === "notice") return "publisher acceptance, not confirmed fanout";
   if (domain === "lease") return "completed Lease acquire/release cycles";
   return "completed RPC calls with a response";
@@ -478,6 +478,16 @@ async function extractPressureGuidance(
   const warnings = arrayField(evidence, "warnings").map((item) => recordValue(item, "pressure warning"));
   const constrained: string[] = [];
   const watch: string[] = [];
+  const disclosures: string[] = [];
+  if (evidence.rssGrowthAssessment !== undefined) {
+    const assessment = recordValue(evidence.rssGrowthAssessment, "RSS growth assessment");
+    const status = stringField(assessment, "status");
+    if (status === "not-assessed") {
+      disclosures.push(`RSS growth was not assessed: ${stringField(assessment, "reason")}`);
+    } else if (status !== "assessed") {
+      throw new Error(`RSS growth assessment had unknown status ${status}`);
+    }
+  }
 
   for (const domain of pressureDomains) {
     for (const stage of domain.stages) {
@@ -500,10 +510,13 @@ async function extractPressureGuidance(
   }
 
   const rating = constrained.length > 0
-    ? { value: "constrained" as const, reasons: [...constrained, ...watch] }
+    ? { value: "constrained" as const, reasons: [...constrained, ...watch, ...disclosures] }
     : watch.length > 0
-      ? { value: "watch" as const, reasons: watch }
-      : { value: "clear" as const, reasons: ["No saturation signals at the observed rate."] };
+      ? { value: "watch" as const, reasons: [...watch, ...disclosures] }
+      : {
+          value: "clear" as const,
+          reasons: ["No saturation signals at the observed rate.", ...disclosures],
+        };
   const metrics = mutableMetrics();
   for (const domain of pressureDomains) {
     addCountAndRate(

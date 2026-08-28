@@ -40,6 +40,7 @@ test("should_label_notice_completion_as_publisher_acceptance", () => {
     "publisher acceptance, not confirmed fanout",
   );
   assert.equal(completionSemanticsForDomain("queue"), "completed Queue enqueue/reserve/completion loops");
+  assert.equal(completionSemanticsForDomain("schedule"), "accepted durable Schedule upserts");
 });
 
 test("should_apply_exact_latency_rating_boundaries", async () => {
@@ -67,6 +68,19 @@ test("should_rate_same_run_pressure_signals_without_changing_semantics", async (
     const guidance = await pressureGuidance(options);
     assert.equal(guidance.rating.value, expected, JSON.stringify(options));
   }
+});
+
+test("should_disclose_when_stream_history_makes_rss_growth_not_comparable", async () => {
+  const guidance = await pressureGuidance({
+    selectedDomain: "stream",
+    rssGrowthAssessment: {
+      status: "not-assessed",
+      reason: "Stream pressure retains durable append-only history.",
+    },
+  });
+
+  assert.equal(guidance.rating.value, "clear");
+  assert.match(guidance.rating.reasons.join(" "), /RSS growth was not assessed/u);
 });
 
 test("should_keep_ambiguous_outcomes_and_shutdown_cancellations_visible_without_downgrade", async () => {
@@ -215,6 +229,8 @@ type PressureOptions = Partial<{
   warningCode: "pending-growth" | "rss-growth";
   legacyEvidence: boolean;
   errorSamples: readonly Readonly<Record<string, string>>[];
+  selectedDomain: "notice" | "stream";
+  rssGrowthAssessment: Readonly<Record<string, string>>;
 }>;
 
 async function pressureGuidance(options: PressureOptions) {
@@ -233,6 +249,7 @@ async function pressureGuidance(options: PressureOptions) {
 }
 
 function pressureEvidence(options: PressureOptions): object {
+  const selectedDomain = options.selectedDomain ?? "notice";
   const p95Ms = options.p95Ms ?? 1;
   const failed = options.failed ?? 0;
   const ambiguous = options.ambiguous ?? 0;
@@ -256,9 +273,9 @@ function pressureEvidence(options: PressureOptions): object {
   return {
     durationMs: 1_000,
     requestTimeoutMs: 1_000,
-    selectedDomains: ["notice"],
+    selectedDomains: [selectedDomain],
     aggregate: {
-      notice: {
+      [selectedDomain]: {
         succeeded: 10,
         failed,
         stages: {
@@ -274,6 +291,9 @@ function pressureEvidence(options: PressureOptions): object {
     warnings: options.warningCode === undefined
       ? []
       : [{ code: options.warningCode, message: options.warningCode, details: {} }],
+    ...(options.rssGrowthAssessment === undefined
+      ? {}
+      : { rssGrowthAssessment: options.rssGrowthAssessment }),
   };
 }
 

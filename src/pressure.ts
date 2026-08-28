@@ -86,6 +86,19 @@ export type PressureWarning = {
   details: Readonly<Record<string, unknown>>;
 };
 
+export type RssGrowthAssessment =
+  | { status: "assessed" }
+  | { status: "not-assessed"; reason: string };
+
+export function rssGrowthAssessment(domains: readonly Domain[]): RssGrowthAssessment {
+  return domains.includes("stream")
+    ? {
+        status: "not-assessed",
+        reason: "Stream pressure retains durable append-only history.",
+      }
+    : { status: "assessed" };
+}
+
 export function createStageMetrics(): MutableStageMetrics {
   return {
     started: 0,
@@ -299,6 +312,7 @@ export function diagnosticWarnings(
   stages: readonly { client: string; domain: Domain; stage: string; latency: LatencyHistogram }[],
   samples: readonly PressureBrokerSample[],
   requestTimeoutMs: number,
+  selectedDomains: readonly Domain[],
 ): PressureWarning[] {
   const warnings: PressureWarning[] = [];
   for (const item of stages) {
@@ -323,7 +337,7 @@ export function diagnosticWarnings(
     }
   }
 
-  if (samples.length >= 2) {
+  if (rssGrowthAssessment(selectedDomains).status === "assessed" && samples.length >= 2) {
     const warmupIndex = Math.min(samples.length - 2, Math.max(0, Math.floor(samples.length * 0.1)));
     const baseline = samples[warmupIndex]?.rssBytes ?? 0;
     const final = samples.at(-1)?.rssBytes ?? 0;

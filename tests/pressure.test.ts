@@ -17,10 +17,29 @@ import {
   prometheusMetric,
 } from "../src/orchestration/compose-evidence.js";
 import {
+  pressureKvWrite,
+  pressureScheduleRoute,
+  pressureStreamWrite,
+} from "../src/workloads/pressure.js";
+import {
   analyzePressureLogs,
   assertProgressWindows,
   pressureUnexpectedErrors,
 } from "../src/orchestration/pressure.js";
+
+test("should_keep_sustained_pressure_durable_identities_bounded", () => {
+  const firstStream = pressureStreamWrite("run", "worker", 0);
+  const laterStream = pressureStreamWrite("run", "worker", 42);
+  const firstKv = pressureKvWrite("run", "worker", 0);
+  const laterKv = pressureKvWrite("run", "worker", 42);
+
+  assert.deepEqual(firstKv.key, laterKv.key);
+  assert.notDeepEqual(firstKv.value, laterKv.value);
+  assert.equal(firstStream.route, laterStream.route);
+  assert.equal(firstStream.expectedOffset, 0n);
+  assert.equal(laterStream.expectedOffset, 42n);
+  assert.equal(pressureScheduleRoute("run", "worker"), pressureScheduleRoute("run", "worker"));
+});
 
 test("should_summarize_latency_percentiles_from_bounded_histograms", () => {
   const metrics = createStageMetrics();
@@ -114,12 +133,25 @@ test("should_report_diagnostic_latency_pending_and_rss_growth_without_failing", 
     [{ client: "worker-a", domain: "queue", stage: "enqueue", latency: metrics.latency }],
     samples,
     10_000,
+    ["queue"],
   );
 
   assert.deepEqual(
     warnings.map(({ code }) => code),
     ["latency-near-timeout", "pending-growth", "rss-growth"],
   );
+});
+
+test("should_not_report_rss_growth_when_stream_history_grows", () => {
+  const samples = [
+    sample(0, 100 * 1_024 * 1_024),
+    sample(0, 120 * 1_024 * 1_024),
+    sample(0, 180 * 1_024 * 1_024),
+  ];
+
+  const warnings = diagnosticWarnings([], samples, 10_000, ["stream"]);
+
+  assert.deepEqual(warnings, []);
 });
 
 test("should_parse_per_client_domain_and_queue_stage_evidence", () => {

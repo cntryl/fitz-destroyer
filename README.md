@@ -317,6 +317,11 @@ It requires every selected domain to make progress on every client in each
 ten-second window and fails on definite operation errors. Queue operations with
 an unknown durable outcome are accepted only when exact reconciliation proves
 that every deterministic sequence resolved at most once.
+KV and Schedule repeatedly update one logical resource per client, while Stream
+appends to one resource per client. This keeps route and current-state cardinality
+bounded so RSS diagnostics are not dominated by intentionally abandoned KV keys
+or Schedule definitions; Stream history still grows according to its durable
+append-only contract.
 `pressure-evidence.json` contains per-client/domain/stage totals, latency
 percentiles, normalized error samples, Queue reconciliation, broker snapshots,
 and diagnostic warnings.
@@ -325,7 +330,10 @@ and diagnostic warnings.
 (15 minutes by default), sampling Fitz every `--sample-ms` (one second by
 default). It additionally writes `soak-samples.ndjson`. High p95 latency,
 three-sample pending growth, and post-warmup RSS growth are warnings rather than
-performance gates.
+performance gates. RSS growth is assessed only when the selected domains have a
+bounded retained-state workload. Runs that include Stream record the RSS signal
+as not assessed because successful Stream pressure necessarily retains durable
+append-only history; latency, backlog, errors, and backpressure remain assessed.
 
 ## Operational guidance
 

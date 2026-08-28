@@ -45,6 +45,10 @@ import {
 } from "./pressure.js";
 import {
   decodePressureQueueSequence,
+  pressureKvWrite,
+  pressureScheduleRoute,
+  pressureStreamWrite,
+  pressureValue,
   runPressureQueueReconciler,
 } from "./workloads/pressure.js";
 import {
@@ -707,7 +711,7 @@ async function bombard(client: Client): Promise<void> {
   };
   const lastErrors: Partial<Record<Domain, string>> = {};
   const payload = (domain: Domain, counter: number): Uint8Array =>
-    new TextEncoder().encode(`${namespace}:${worker}:${domain}:${counter.toString().padStart(12, "0")}`);
+    pressureValue(namespace, worker, domain, counter);
 
   const rpcRoute = `rpc://destroyer/${namespace}/${worker}`;
   const rpcWorker = selectedDomains.includes("rpc")
@@ -759,10 +763,11 @@ async function bombard(client: Client): Promise<void> {
     },
     kv: async (i, signal) => {
       const route = `kv://destroyer/${namespace}/${worker}`;
+      const { key, value } = pressureKvWrite(namespace, worker, i);
       await observeStage(stages, "kv", "transaction", async () => {
         const tx = await client.kv.begin(route, { durability: "Sync", signal });
         try {
-          await tx.put({ key: payload("kv", i), value: payload("kv", i + 1), signal });
+          await tx.put({ key, value, signal });
           await tx.commit({ signal });
         } catch (error) {
           await tx.rollback({ signal }).catch(() => undefined);
@@ -771,11 +776,11 @@ async function bombard(client: Client): Promise<void> {
       }, true);
     },
     stream: async (i, signal) => {
-      const route = `stream://destroyer/${namespace}/${worker}-s-${i}`;
+      const { route, expectedOffset } = pressureStreamWrite(namespace, worker, i);
       await observeStage(stages, "stream", "append", async () => {
         const session = await client.stream.begin(route, { signal });
         try {
-          await session.append({ expectedOffset: 0n, body: payload("stream", i), signal });
+          await session.append({ expectedOffset, body: payload("stream", i), signal });
           await session.commit({ mode: "Sync", signal });
         } catch (error) {
           await session.rollback({ signal }).catch(() => undefined);
@@ -784,7 +789,7 @@ async function bombard(client: Client): Promise<void> {
       }, true);
     },
     schedule: async (i, signal) => {
-      const route = `schedule://destroyer/${namespace}/${worker}/job-${i}`;
+      const route = pressureScheduleRoute(namespace, worker);
       await observeStage(stages, "schedule", "create", () =>
         client.schedule.create(route, {
           cron: "0 0 1 1 *",
