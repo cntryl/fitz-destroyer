@@ -55,7 +55,8 @@ export type LiveRole =
   | "lease-waiter-disconnect-races"
   | "wildcard-registration-quota-reclamation"
   | "stream-selector-cursor-conformance"
-  | "same-shard-family-fairness";
+  | "same-shard-family-fairness"
+  | "family-actor-partial-failure-isolation";
 
 export type RoleContainer = {
   id: string;

@@ -89,6 +89,7 @@ import {
   runSlowRecipientPublisher,
 } from "./workloads/slow-recipient-isolation.js";
 import { runSameShardFamilyFairness } from "./workloads/same-shard-family-fairness.js";
+import { runFamilyActorPartialFailureIsolation } from "./workloads/family-actor-partial-failure-isolation.js";
 import {
   runWireConformance,
   type WireConformanceCase,
@@ -169,7 +170,8 @@ type WorkerMode =
   | "lease-waiter-disconnect-races"
   | "wildcard-registration-quota-reclamation"
   | "stream-selector-cursor-conformance"
-  | "same-shard-family-fairness";
+  | "same-shard-family-fairness"
+  | "family-actor-partial-failure-isolation";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -419,6 +421,12 @@ async function runLiveRole(
     await runStreamSelectorCursorConformance(client, { ...options, url: process.env.DESTROYER_STREAM_SELECTOR_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "same-shard-family-fairness") {
     await runSameShardFamilyFairness(client, { ...options, url: process.env.DESTROYER_SAME_SHARD_URL ?? "ws://fitz:4090/ws" }, log);
+  } else if (liveMode === "family-actor-partial-failure-isolation") {
+    await runFamilyActorPartialFailureIsolation(client, {
+      ...options,
+      url: process.env.DESTROYER_FAMILY_FAILURE_URL ?? "ws://fitz:4090/ws",
+      failpointUrl: process.env.DESTROYER_FAMILY_FAILURE_HTTP_URL ?? "http://fitz:4090",
+    }, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
   } else if (
@@ -940,6 +948,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     || value === "wildcard-registration-quota-reclamation"
     || value === "stream-selector-cursor-conformance"
     || value === "same-shard-family-fairness"
+    || value === "family-actor-partial-failure-isolation"
   ) {
     return value;
   }

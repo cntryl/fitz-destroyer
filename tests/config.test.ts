@@ -152,6 +152,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "stream-selector-cursor-conformance",
     "same-shard-family-fairness",
     "actor-supervision-failpoint",
+    "family-actor-partial-failure-isolation",
   ];
 
   // Act
