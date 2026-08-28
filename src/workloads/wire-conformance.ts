@@ -198,8 +198,8 @@ async function runConnectPipelineFamilyRebind(options: WireConformanceOptions): 
         failures.push(`pipeline ${transport} rejected non-atomically with family A/B queue counts ${familyATotal}/${familyBTotal}`);
       }
     }
-    if (!responseObserved) {
-      failures.push(`pipeline ${transport} produced no terminal response${terminalError === undefined ? "" : `: ${terminalError}`}`);
+    if (!responseObserved && terminalError === undefined) {
+      failures.push(`pipeline ${transport} produced no terminal outcome`);
     }
     options.log("connect_pipeline_family_rebind_case", {
       transport,

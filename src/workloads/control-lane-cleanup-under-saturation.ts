@@ -225,7 +225,10 @@ async function cleanupSaturationLane(
     })
     .catch(() => undefined);
   const queueRoute = saturationRoute("queue", options, lane);
-  for (let pass = 0; pass < 4; pass += 1) {
+  const leaseExpiryAt = Date.now() + 5_500;
+  const drainDeadline = Date.now() + Math.max(options.requestTimeoutMs, 6_000);
+  let emptyAfterLeaseExpiry = false;
+  while (Date.now() < drainDeadline && !emptyAfterLeaseExpiry) {
     const items = await client.queue
       .reserve(queueRoute, {
         leaseSeconds: 5,
@@ -233,9 +236,13 @@ async function cleanupSaturationLane(
         signal: AbortSignal.timeout(options.requestTimeoutMs),
       })
       .catch(() => []);
-    if (items.length === 0) break;
-    const signal = AbortSignal.timeout(options.requestTimeoutMs);
-    await Promise.allSettled(items.map((item) => item.complete({ signal })));
+    if (items.length === 0) {
+      emptyAfterLeaseExpiry = Date.now() >= leaseExpiryAt;
+      await sleep(250);
+    } else {
+      const signal = AbortSignal.timeout(options.requestTimeoutMs);
+      await Promise.allSettled(items.map((item) => item.complete({ signal })));
+    }
   }
 }
 
