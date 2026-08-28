@@ -836,6 +836,7 @@ function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly E
     "family-actor-partial-failure-isolation": "family_actor_partial_failure_isolation_complete",
     "same-shard-family-failure-isolation": "same_shard_family_failure_isolation_complete",
     "family-actor-exhaustion-readiness": "family_actor_exhaustion_readiness_complete",
+    "family-actor-degradation-observability": "family_actor_degradation_observability_complete",
     chaos: "chaos_complete",
     "domain-pressure": "pressure_complete",
     soak: "pressure_complete",

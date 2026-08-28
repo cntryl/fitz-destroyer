@@ -49,6 +49,7 @@ import { runActorSupervisionFailpointScenario } from "./orchestration/actor-supe
 import { runFamilyActorPartialFailureIsolationScenario } from "./orchestration/family-actor-partial-failure-isolation.js";
 import { runSameShardFamilyFailureIsolationScenario } from "./orchestration/same-shard-family-failure-isolation.js";
 import { runFamilyActorExhaustionReadinessScenario } from "./orchestration/family-actor-exhaustion-readiness.js";
+import { runFamilyActorDegradationObservabilityScenario } from "./orchestration/family-actor-degradation-observability.js";
 import { runRpcResponseStateConformanceScenario } from "./orchestration/rpc-response-state-conformance.js";
 import { runResponseEnvelopeBoundariesScenario } from "./orchestration/response-envelope-boundaries.js";
 import { runLeaseWaiterDisconnectRacesScenario } from "./orchestration/lease-waiter-disconnect-races.js";
@@ -356,6 +357,8 @@ async function executeWorkload(
     await runSameShardFamilyFailureIsolationScenario(stack, config, shape, artifacts);
   } else if (scenario === "family-actor-exhaustion-readiness") {
     await runFamilyActorExhaustionReadinessScenario(stack, config, shape, artifacts);
+  } else if (scenario === "family-actor-degradation-observability") {
+    await runFamilyActorDegradationObservabilityScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

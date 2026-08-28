@@ -355,6 +355,7 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "family-actor-partial-failure-isolation") return [{ event: "family_actor_partial_failure_isolation_complete", targetedFamilies: 2, failedFamilyRejections: 2, siblingOperations: 2, readinessChecks: 2, crossFamilyDeliveries: 0, elapsedMs: 1_000 }];
   if (scenario === "same-shard-family-failure-isolation") return [{ event: "same_shard_family_failure_isolation_complete", shardCount: 8, failedFamily: 1, siblingFamily: 9, failedFamilyRejections: 2, siblingOperations: 2, readinessChecks: 2, crossFamilyDeliveries: 0, elapsedMs: 1_000 }];
   if (scenario === "family-actor-exhaustion-readiness") return [{ event: "family_actor_exhaustion_readiness_complete", domainsExhausted: 2, partialReadinessChecks: 2, totalReadinessWithdrawals: 2, failedFamilyRejections: 4, restartRecoveries: 2, elapsedMs: 1_000 }];
+  if (scenario === "family-actor-degradation-observability") return [{ event: "family_actor_degradation_observability_complete", domainsObserved: 2, metricIncrements: 2, duplicateMetricIncrements: 0, siblingCanaries: 2, readinessChecks: 2, restartMetricResets: 2, elapsedMs: 1_000 }];
   return [];
 }
 

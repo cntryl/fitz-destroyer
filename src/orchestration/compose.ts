@@ -92,14 +92,15 @@ export class ComposeStack {
       DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
       DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
       DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
-      ...(config.scenario === "actor-supervision-failpoint" || config.scenario === "family-actor-partial-failure-isolation" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-exhaustion-readiness" ? { FITZ_DESTROYER_FAILPOINTS: "enabled" } : {}),
+      ...(config.scenario === "actor-supervision-failpoint" || config.scenario === "family-actor-partial-failure-isolation" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-exhaustion-readiness" || config.scenario === "family-actor-degradation-observability" ? { FITZ_DESTROYER_FAILPOINTS: "enabled" } : {}),
       ...(config.scenario === "authorization-isolation" ||
         config.scenario === "connect-pipeline-family-rebind" ||
         config.scenario === "route-family-isolation-matrix" ||
         config.scenario === "same-shard-family-fairness" ||
         config.scenario === "family-actor-partial-failure-isolation" ||
         config.scenario === "same-shard-family-failure-isolation" ||
-        config.scenario === "family-actor-exhaustion-readiness"
+        config.scenario === "family-actor-exhaustion-readiness" ||
+        config.scenario === "family-actor-degradation-observability"
         ? {
             FITZ_AUTH_REQUIRED: "true",
             FITZ_ASSUME_EXTERNAL_TLS: "true",
@@ -193,6 +194,7 @@ export class ComposeStack {
     const startedAt = performance.now();
     await this.#artifacts.event("fitz_graceful_stop_started");
     await this.compose(["stop", "-t", "20", "fitz"], { stream: true });
+    this.#metricsUrl = undefined;
     await this.#artifacts.event("fitz_graceful_stop_complete");
     await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
     await this.waitReady();
@@ -205,6 +207,7 @@ export class ComposeStack {
   async stopFitz(): Promise<void> {
     await this.#artifacts.event("fitz_final_stop_started");
     await this.compose(["stop", "-t", "20", "fitz"], { stream: true, allowFailure: true });
+    this.#metricsUrl = undefined;
     await this.#artifacts.event("fitz_final_stop_complete");
   }
 
@@ -212,6 +215,7 @@ export class ComposeStack {
     const startedAt = performance.now();
     await this.#artifacts.event("fitz_cache_discard_started");
     await this.compose(["stop", "-t", "20", "fitz"], { stream: true });
+    this.#metricsUrl = undefined;
     await this.captureServiceLogs("fitz", "cache-loss-fitz");
     await this.compose(["rm", "-f", "fitz"], { stream: true });
     const volumeResult = await runCommand(
@@ -401,6 +405,12 @@ export class ComposeStack {
       },
       rssBytes: parseDockerMemoryUsage(record.MemUsage),
     };
+  }
+
+  async prometheusMetricValue(name: string): Promise<number> {
+    const metricsUrl = await this.metricsUrl();
+    const prometheus = await this.fetchTextAt(`${metricsUrl}/metrics`, "Prometheus /metrics");
+    return prometheusMetric(prometheus, name);
   }
 
   async waitForPressureQuiescence(): Promise<PressureBrokerSample> {

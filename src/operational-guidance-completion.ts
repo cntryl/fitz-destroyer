@@ -150,6 +150,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "family_actor_exhaustion_readiness_complete",
     fields: [["domainsExhausted", "Exhausted domain pools"], ["partialReadinessChecks", "Healthy partial-failure checks"], ["totalReadinessWithdrawals", "Zero-capacity readiness withdrawals"], ["failedFamilyRejections", "Failed-family rejections"], ["restartRecoveries", "Restart recoveries"]],
   },
+  "family-actor-degradation-observability": {
+    event: "family_actor_degradation_observability_complete",
+    fields: [["domainsObserved", "Observed degraded domains"], ["metricIncrements", "Failure metric increments"], ["duplicateMetricIncrements", "Duplicate metric increments"], ["siblingCanaries", "Healthy sibling canaries"], ["readinessChecks", "Healthy readiness checks"], ["restartMetricResets", "Restart metric resets"]],
+  },
 };
 
 export function completionMetricsForScenario(

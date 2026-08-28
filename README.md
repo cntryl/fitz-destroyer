@@ -166,6 +166,12 @@ and then the two RPC families one at a time. Readiness must remain healthy with
 one surviving family, withdraw once the domain has zero capacity, and recover
 with exact canaries after a clean-process restart.
 
+`family-actor-degradation-observability` fails one Stream family and one RPC
+family while their siblings remain healthy. Each per-domain failure counter
+must increment exactly once, repeated rejected work must not inflate it,
+readiness and sibling canaries must remain healthy, and restart must reset the
+process-local metric.
+
 `actor-supervision-failpoint` explicitly enables Destroyer-only broker hooks,
 panics all seven domain actors one process at a time and then concurrently under
 active all-domain traffic, requires each failure wave to withdraw readiness and
