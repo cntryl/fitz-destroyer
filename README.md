@@ -157,10 +157,11 @@ family-actor shard, continuously fills one family's Notice lane, and requires
 every sibling-family delivery canary to complete within the request timeout.
 
 `actor-supervision-failpoint` explicitly enables Destroyer-only broker hooks,
-panics all seven domain actors one process at a time, requires
-each panic to withdraw readiness and drain, then verifies exact Notice fanout,
+panics all seven domain actors one process at a time and then concurrently,
+requires each failure wave to withdraw readiness and drain, then verifies exact Notice fanout,
 Queue delivery/completion, KV commit, Lease acquisition, Schedule create/cancel,
 Stream append/commit, and RPC worker/call behavior after clean-process restarts.
+The correlated-failure phase requires all seven domain canaries to recover together.
 
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through

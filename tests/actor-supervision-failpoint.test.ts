@@ -4,7 +4,7 @@ import { assertActorSupervisionEvidence, recoveryCanaryNamespace } from "../src/
 
 test("should_require_fail_closed_actor_supervision_and_restart_recovery", () => {
   // Arrange
-  const evidence = { domainsInjected: 7, readinessWithdrawals: 7, restartsRecovered: 7, canaryDeliveries: 4, expectedCanaryDeliveries: 4, queueRecovered: 1, expectedQueueRecovered: 1, kvRecovered: 1, leaseRecovered: 1, scheduleRecovered: 1, streamRecovered: 1, rpcRecovered: 1 };
+  const evidence = { domainsInjected: 7, correlatedDomainsInjected: 7, readinessWithdrawals: 8, restartsRecovered: 8, canaryDeliveries: 4, expectedCanaryDeliveries: 4, queueRecovered: 1, expectedQueueRecovered: 1, kvRecovered: 1, leaseRecovered: 1, scheduleRecovered: 1, streamRecovered: 1, rpcRecovered: 1, correlatedRecoveryOperations: 7 };
 
   // Act
   // Assert
@@ -17,6 +17,8 @@ test("should_require_fail_closed_actor_supervision_and_restart_recovery", () => 
   assert.throws(() => assertActorSupervisionEvidence({ ...evidence, scheduleRecovered: 0 }), /Schedule recovery/u);
   assert.throws(() => assertActorSupervisionEvidence({ ...evidence, streamRecovered: 0 }), /Stream recovery/u);
   assert.throws(() => assertActorSupervisionEvidence({ ...evidence, rpcRecovered: 0 }), /RPC recovery/u);
+  assert.throws(() => assertActorSupervisionEvidence({ ...evidence, correlatedDomainsInjected: 6 }), /correlated actor failpoint/u);
+  assert.throws(() => assertActorSupervisionEvidence({ ...evidence, correlatedRecoveryOperations: 6 }), /Correlated recovery/u);
 });
 
 test("should_isolate_each_post_restart_canary_route_namespace", () => {
