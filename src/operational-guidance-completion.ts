@@ -126,6 +126,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "wildcard_registration_quota_reclamation_complete",
     fields: [["domains", "Quota domains"], ["registrations", "Registrations"], ["limitRejections", "Limit rejections"], ["unsubscribeReclaims", "Unsubscribe reclaims"], ["disconnectReclaims", "Disconnect reclaims"], ["canaryFailures", "Canary failures"]],
   },
+  "stream-selector-cursor-conformance": {
+    event: "stream_selector_cursor_conformance_complete",
+    fields: [["selectors", "Selector shapes"], ["recordsWritten", "Records written"], ["visibleRecords", "Visible records"], ["filteredOffsets", "Filtered offsets"], ["cursorAdvances", "Cursor advances"], ["reconnectContinuations", "Reconnect continuations"], ["duplicateRecords", "Duplicate records"], ["missingRecords", "Missing records"]],
+  },
 };
 
 export function completionMetricsForScenario(

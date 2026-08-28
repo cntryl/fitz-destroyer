@@ -53,7 +53,8 @@ export type LiveRole =
   | "rpc-response-state-conformance"
   | "response-envelope-boundaries"
   | "lease-waiter-disconnect-races"
-  | "wildcard-registration-quota-reclamation";
+  | "wildcard-registration-quota-reclamation"
+  | "stream-selector-cursor-conformance";
 
 export type RoleContainer = {
   id: string;

@@ -108,6 +108,7 @@ jobs:
           - response-envelope-boundaries
           - lease-waiter-disconnect-races
           - wildcard-registration-quota-reclamation
+          - stream-selector-cursor-conformance
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7

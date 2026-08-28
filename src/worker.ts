@@ -106,6 +106,7 @@ import { runRpcResponseStateConformance } from "./workloads/rpc-response-state-c
 import { runResponseEnvelopeBoundaries } from "./workloads/response-envelope-boundaries.js";
 import { runLeaseWaiterDisconnectRaces } from "./workloads/lease-waiter-disconnect-races.js";
 import { runWildcardRegistrationQuotaReclamation } from "./workloads/wildcard-registration-quota-reclamation.js";
+import { runStreamSelectorCursorConformance } from "./workloads/stream-selector-cursor-conformance.js";
 
 type WorkerMode =
   | "load"
@@ -165,7 +166,8 @@ type WorkerMode =
   | "rpc-response-state-conformance"
   | "response-envelope-boundaries"
   | "lease-waiter-disconnect-races"
-  | "wildcard-registration-quota-reclamation";
+  | "wildcard-registration-quota-reclamation"
+  | "stream-selector-cursor-conformance";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -411,6 +413,8 @@ async function runLiveRole(
     await runLeaseWaiterDisconnectRaces(client, { ...options, url: process.env.DESTROYER_LEASE_RACE_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "wildcard-registration-quota-reclamation") {
     await runWildcardRegistrationQuotaReclamation(client, { ...options, url: process.env.DESTROYER_WILDCARD_QUOTA_URL ?? "ws://fitz:4090/ws" }, log);
+  } else if (liveMode === "stream-selector-cursor-conformance") {
+    await runStreamSelectorCursorConformance(client, { ...options, url: process.env.DESTROYER_STREAM_SELECTOR_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
   } else if (
@@ -930,6 +934,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "response-envelope-boundaries"
     || value === "lease-waiter-disconnect-races"
     || value === "wildcard-registration-quota-reclamation"
+    || value === "stream-selector-cursor-conformance"
   ) {
     return value;
   }

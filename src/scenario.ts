@@ -48,6 +48,7 @@ import { runRpcResponseStateConformanceScenario } from "./orchestration/rpc-resp
 import { runResponseEnvelopeBoundariesScenario } from "./orchestration/response-envelope-boundaries.js";
 import { runLeaseWaiterDisconnectRacesScenario } from "./orchestration/lease-waiter-disconnect-races.js";
 import { runWildcardRegistrationQuotaReclamationScenario } from "./orchestration/wildcard-registration-quota-reclamation.js";
+import { runStreamSelectorCursorConformanceScenario } from "./orchestration/stream-selector-cursor-conformance.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -338,6 +339,8 @@ async function executeWorkload(
     await runLeaseWaiterDisconnectRacesScenario(stack, config, shape, artifacts);
   } else if (scenario === "wildcard-registration-quota-reclamation") {
     await runWildcardRegistrationQuotaReclamationScenario(stack, config, shape, artifacts);
+  } else if (scenario === "stream-selector-cursor-conformance") {
+    await runStreamSelectorCursorConformanceScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

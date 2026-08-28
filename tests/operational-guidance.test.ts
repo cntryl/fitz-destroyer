@@ -349,6 +349,7 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "response-envelope-boundaries") return [{ event: "response_envelope_boundaries_complete", domains: 7, exactFit: 7, oneOverRejected: 3, boundedAggregates: 2, canaryOperations: 7, elapsedMs: 1_000 }];
   if (scenario === "lease-waiter-disconnect-races") return [{ event: "lease_waiter_disconnect_races_complete", rounds: 8, waitersQueued: 32, waitersDisconnected: 32, ghostAcquisitions: 0, pendingWaiters: 0, replacementAcquisitions: 8, fencingRegressions: 0, elapsedMs: 1_000 }];
   if (scenario === "wildcard-registration-quota-reclamation") return [{ event: "wildcard_registration_quota_reclamation_complete", domains: 6, registrations: 1536, limitRejections: 12, unsubscribeReclaims: 6, disconnectReclaims: 6, canaryFailures: 0, elapsedMs: 1_000 }];
+  if (scenario === "stream-selector-cursor-conformance") return [{ event: "stream_selector_cursor_conformance_complete", selectors: 8, recordsWritten: 8, visibleRecords: 21, filteredOffsets: 21, cursorAdvances: 42, duplicateRecords: 0, missingRecords: 0, reconnectContinuations: 1, elapsedMs: 1_000 }];
   return [];
 }
 

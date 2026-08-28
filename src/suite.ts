@@ -54,6 +54,7 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "response-envelope-boundaries",
   "lease-waiter-disconnect-races",
   "wildcard-registration-quota-reclamation",
+  "stream-selector-cursor-conformance",
 ];
 
 export type SuiteSummary = {

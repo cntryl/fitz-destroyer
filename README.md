@@ -147,6 +147,11 @@ allowance for Queue, KV, Stream, Schedule, Notice, and RPC, proves the next
 registration is rejected, then verifies reclamation through both explicit
 unsubscribe and transport disconnect. Lease accepts exact subscriptions only.
 
+`stream-selector-cursor-conformance` writes filtered and visible records across
+multiple realms, areas, and resources, then checks eight selector shapes across
+resource, area, realm, and global cursor axes with one-record pages. A fresh
+connection must continue from the prior global cursor without gaps or duplicates.
+
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through
 small pages. It requires exact global offsets, resource-local offsets, routes,
