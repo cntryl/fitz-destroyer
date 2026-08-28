@@ -351,7 +351,7 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "wildcard-registration-quota-reclamation") return [{ event: "wildcard_registration_quota_reclamation_complete", domains: 6, registrations: 1536, limitRejections: 12, unsubscribeReclaims: 6, disconnectReclaims: 6, canaryFailures: 0, elapsedMs: 1_000 }];
   if (scenario === "stream-selector-cursor-conformance") return [{ event: "stream_selector_cursor_conformance_complete", selectors: 8, recordsWritten: 8, visibleRecords: 21, filteredOffsets: 21, cursorAdvances: 42, duplicateRecords: 0, missingRecords: 0, reconnectContinuations: 1, elapsedMs: 1_000 }];
   if (scenario === "same-shard-family-fairness") return [{ event: "same_shard_family_fairness_complete", noisyCompleted: 2_048, canariesAttempted: 32, canariesCompleted: 32, canaryErrors: 0, longestCanaryMs: 10, requestTimeoutMs: 1_000, elapsedMs: 1_000 }];
-  if (scenario === "actor-supervision-failpoint") return [{ event: "actor_supervision_failpoint_complete", domainsInjected: 4, readinessWithdrawals: 4, restartsRecovered: 4, canaryDeliveries: 4, queueRecovered: 1, kvRecovered: 1, leaseRecovered: 1, elapsedMs: 1_000 }];
+  if (scenario === "actor-supervision-failpoint") return [{ event: "actor_supervision_failpoint_complete", domainsInjected: 5, readinessWithdrawals: 5, restartsRecovered: 5, canaryDeliveries: 4, queueRecovered: 1, kvRecovered: 1, leaseRecovered: 1, scheduleRecovered: 1, elapsedMs: 1_000 }];
   return [];
 }
 
