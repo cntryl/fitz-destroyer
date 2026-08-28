@@ -55,6 +55,7 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "lease-waiter-disconnect-races",
   "wildcard-registration-quota-reclamation",
   "stream-selector-cursor-conformance",
+  "schedule-due-storm-isolation",
   "same-shard-family-fairness",
   "actor-supervision-failpoint",
   "family-actor-partial-failure-isolation",

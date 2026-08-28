@@ -116,6 +116,7 @@ import { runResponseEnvelopeBoundaries } from "./workloads/response-envelope-bou
 import { runLeaseWaiterDisconnectRaces } from "./workloads/lease-waiter-disconnect-races.js";
 import { runWildcardRegistrationQuotaReclamation } from "./workloads/wildcard-registration-quota-reclamation.js";
 import { runStreamSelectorCursorConformance } from "./workloads/stream-selector-cursor-conformance.js";
+import { runScheduleDueStormIsolation } from "./workloads/schedule-due-storm-isolation.js";
 
 type WorkerMode =
   | "load"
@@ -177,6 +178,7 @@ type WorkerMode =
   | "lease-waiter-disconnect-races"
   | "wildcard-registration-quota-reclamation"
   | "stream-selector-cursor-conformance"
+  | "schedule-due-storm-isolation"
   | "same-shard-family-fairness"
   | "family-actor-partial-failure-isolation"
   | "same-shard-family-failure-isolation"
@@ -341,7 +343,8 @@ async function runLiveRole(
     liveMode === "slow-recipient" ||
     liveMode === "shutdown-reconnect-cleanup-storm" ||
     liveMode === "control-lane-cleanup-under-saturation" ||
-    liveMode === "route-family-isolation-matrix"
+    liveMode === "route-family-isolation-matrix" ||
+    liveMode === "schedule-due-storm-isolation"
       ? shutdown.signal
       : AbortSignal.any([shutdown.signal, AbortSignal.timeout(jobTimeoutMs)]);
   const options: LiveCommonOptions = {
@@ -429,6 +432,13 @@ async function runLiveRole(
     await runWildcardRegistrationQuotaReclamation(client, { ...options, url: process.env.DESTROYER_WILDCARD_QUOTA_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "stream-selector-cursor-conformance") {
     await runStreamSelectorCursorConformance(client, { ...options, url: process.env.DESTROYER_STREAM_SELECTOR_URL ?? "ws://fitz:4090/ws" }, log);
+  } else if (liveMode === "schedule-due-storm-isolation") {
+    await runScheduleDueStormIsolation(client, {
+      ...options,
+      fireAtMs: positiveEnv("DESTROYER_SCHEDULE_STORM_FIRE_AT_MS", 1),
+      observationMs: positiveEnv("DESTROYER_SCHEDULE_STORM_OBSERVATION_MS", 5_000),
+      url: process.env.DESTROYER_SCHEDULE_STORM_URL ?? "ws://fitz:4090/ws",
+    }, log);
   } else if (liveMode === "same-shard-family-fairness") {
     await runSameShardFamilyFairness(client, { ...options, url: process.env.DESTROYER_SAME_SHARD_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "family-actor-partial-failure-isolation") {
@@ -979,6 +989,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     || value === "lease-waiter-disconnect-races"
     || value === "wildcard-registration-quota-reclamation"
     || value === "stream-selector-cursor-conformance"
+    || value === "schedule-due-storm-isolation"
     || value === "same-shard-family-fairness"
     || value === "family-actor-partial-failure-isolation"
     || value === "same-shard-family-failure-isolation"

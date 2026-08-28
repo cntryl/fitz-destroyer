@@ -130,6 +130,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "stream_selector_cursor_conformance_complete",
     fields: [["selectors", "Selector shapes"], ["recordsWritten", "Records written"], ["visibleRecords", "Visible records"], ["filteredOffsets", "Filtered offsets"], ["cursorAdvances", "Cursor advances"], ["reconnectContinuations", "Reconnect continuations"], ["duplicateRecords", "Duplicate records"], ["missingRecords", "Missing records"]],
   },
+  "schedule-due-storm-isolation": {
+    event: "schedule_due_storm_isolation_complete",
+    fields: [["definitionsCreated", "Due definitions"], ["deliveries", "Exact deliveries"], ["canariesAttempted", "Sibling canaries attempted"], ["canariesCompleted", "Sibling canaries completed"], ["readinessChecks", "Readiness checks"], ["postStormCanaries", "Post-storm canaries"]],
+  },
   "same-shard-family-fairness": {
     event: "same_shard_family_fairness_complete",
     fields: [["noisyCompleted", "Noisy-family operations"], ["canariesAttempted", "Sibling canaries attempted"], ["canariesCompleted", "Sibling canaries completed"], ["canaryErrors", "Sibling canary errors"]],

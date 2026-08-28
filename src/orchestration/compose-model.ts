@@ -55,6 +55,7 @@ export type LiveRole =
   | "lease-waiter-disconnect-races"
   | "wildcard-registration-quota-reclamation"
   | "stream-selector-cursor-conformance"
+  | "schedule-due-storm-isolation"
   | "same-shard-family-fairness"
   | "family-actor-partial-failure-isolation"
   | "same-shard-family-failure-isolation"

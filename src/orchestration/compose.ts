@@ -45,6 +45,24 @@ import { executeDiskFiller, executeRecoveryJob } from "./compose-jobs.js";
 import { executeUpgradeReplacement } from "./compose-upgrade.js";
 
 export type { LiveRole, RoleContainer } from "./compose-model.js";
+
+const AUTHENTICATED_ROUTE_FAMILY_SCENARIOS: ReadonlySet<RunConfig["scenario"]> = new Set([
+  "authorization-isolation",
+  "connect-pipeline-family-rebind",
+  "route-family-isolation-matrix",
+  "schedule-due-storm-isolation",
+  "same-shard-family-fairness",
+  "family-actor-partial-failure-isolation",
+  "same-shard-family-failure-isolation",
+  "family-actor-exhaustion-readiness",
+  "family-actor-degradation-observability",
+  "family-actor-inflight-concurrent-failure",
+]);
+
+export function usesAuthenticatedRouteFamilies(scenario: RunConfig["scenario"]): boolean {
+  return AUTHENTICATED_ROUTE_FAMILY_SCENARIOS.has(scenario);
+}
+
 export class ComposeStack {
   readonly #config: RunConfig;
   readonly #project: string;
@@ -93,15 +111,7 @@ export class ComposeStack {
       DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
       DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
       ...(config.scenario === "actor-supervision-failpoint" || config.scenario === "family-actor-partial-failure-isolation" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-exhaustion-readiness" || config.scenario === "family-actor-degradation-observability" || config.scenario === "family-actor-inflight-concurrent-failure" ? { FITZ_DESTROYER_FAILPOINTS: "enabled" } : {}),
-      ...(config.scenario === "authorization-isolation" ||
-        config.scenario === "connect-pipeline-family-rebind" ||
-        config.scenario === "route-family-isolation-matrix" ||
-        config.scenario === "same-shard-family-fairness" ||
-        config.scenario === "family-actor-partial-failure-isolation" ||
-        config.scenario === "same-shard-family-failure-isolation" ||
-        config.scenario === "family-actor-exhaustion-readiness" ||
-        config.scenario === "family-actor-degradation-observability" ||
-        config.scenario === "family-actor-inflight-concurrent-failure"
+      ...(usesAuthenticatedRouteFamilies(config.scenario)
         ? {
             FITZ_AUTH_REQUIRED: "true",
             FITZ_ASSUME_EXTERNAL_TLS: "true",

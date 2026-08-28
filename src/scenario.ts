@@ -56,6 +56,7 @@ import { runResponseEnvelopeBoundariesScenario } from "./orchestration/response-
 import { runLeaseWaiterDisconnectRacesScenario } from "./orchestration/lease-waiter-disconnect-races.js";
 import { runWildcardRegistrationQuotaReclamationScenario } from "./orchestration/wildcard-registration-quota-reclamation.js";
 import { runStreamSelectorCursorConformanceScenario } from "./orchestration/stream-selector-cursor-conformance.js";
+import { runScheduleDueStormIsolationScenario } from "./orchestration/schedule-due-storm-isolation.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -348,6 +349,8 @@ async function executeWorkload(
     await runWildcardRegistrationQuotaReclamationScenario(stack, config, shape, artifacts);
   } else if (scenario === "stream-selector-cursor-conformance") {
     await runStreamSelectorCursorConformanceScenario(stack, config, shape, artifacts);
+  } else if (scenario === "schedule-due-storm-isolation") {
+    await runScheduleDueStormIsolationScenario(stack, config, shape, artifacts);
   } else if (scenario === "same-shard-family-fairness") {
     await runSameShardFamilyFairnessScenario(stack, config, shape, artifacts);
   } else if (scenario === "actor-supervision-failpoint") {

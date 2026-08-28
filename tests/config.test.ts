@@ -150,6 +150,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "lease-waiter-disconnect-races",
     "wildcard-registration-quota-reclamation",
     "stream-selector-cursor-conformance",
+    "schedule-due-storm-isolation",
     "same-shard-family-fairness",
     "actor-supervision-failpoint",
     "family-actor-partial-failure-isolation",

@@ -53,6 +53,7 @@ export type ScenarioName =
   | "lease-waiter-disconnect-races"
   | "wildcard-registration-quota-reclamation"
   | "stream-selector-cursor-conformance"
+  | "schedule-due-storm-isolation"
   | "same-shard-family-fairness"
   | "actor-supervision-failpoint"
   | "family-actor-partial-failure-isolation"
@@ -145,7 +146,7 @@ export type RunConfig = Scale & {
   destroyerImage: string | undefined;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|shutdown-reconnect-cleanup-storm|control-lane-cleanup-under-saturation|route-family-isolation-matrix|rpc-response-state-conformance|response-envelope-boundaries|lease-waiter-disconnect-races|wildcard-registration-quota-reclamation|stream-selector-cursor-conformance|same-shard-family-fairness|actor-supervision-failpoint|family-actor-partial-failure-isolation|same-shard-family-failure-isolation|family-actor-exhaustion-readiness|family-actor-degradation-observability|family-actor-inflight-concurrent-failure|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|schedule-due-storm-isolation|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|shutdown-reconnect-cleanup-storm|control-lane-cleanup-under-saturation|route-family-isolation-matrix|rpc-response-state-conformance|response-envelope-boundaries|lease-waiter-disconnect-races|wildcard-registration-quota-reclamation|stream-selector-cursor-conformance|same-shard-family-fairness|actor-supervision-failpoint|family-actor-partial-failure-isolation|same-shard-family-failure-isolation|family-actor-exhaustion-readiness|family-actor-degradation-observability|family-actor-inflight-concurrent-failure|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -418,6 +419,7 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "lease-waiter-disconnect-races" ||
     value === "wildcard-registration-quota-reclamation" ||
     value === "stream-selector-cursor-conformance" ||
+    value === "schedule-due-storm-isolation" ||
     value === "same-shard-family-fairness" ||
     value === "actor-supervision-failpoint" ||
     value === "family-actor-partial-failure-isolation" ||

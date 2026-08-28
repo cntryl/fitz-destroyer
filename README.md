@@ -152,6 +152,13 @@ multiple realms, areas, and resources, then checks eight selector shapes across
 resource, area, realm, and global cursor axes with one-record pages. A fresh
 connection must continue from the prior global cursor without gaps or duplicates.
 
+`schedule-due-storm-isolation` arms at least 512 definitions for one route
+family on the same due minute while a sibling family continuously creates and
+cancels independent definitions. Every due definition must fire exactly once,
+the sibling and readiness canaries must stay responsive, and all definitions
+and live Schedule state must drain after the storm. The standard and large
+scales raise the due set to at least 2,000 and 5,000 definitions respectively.
+
 `same-shard-family-fairness` pins two authenticated route families to one
 family-actor shard, continuously fills one family's Notice lane, and requires
 every sibling-family delivery canary to complete within the request timeout.
@@ -603,6 +610,8 @@ before the due minute, and expects `--entries * --clients` Broadcast deliveries
 plus `--entries` Single deliveries after the broker restart. Increase
 `--schedule-lead-ms` when a large create set cannot leave ten seconds for the
 restart and subscriber recovery before its due minute.
+`schedule-due-storm-isolation` also uses `--schedule-lead-ms`; increase it when
+the selected definition set cannot be armed before the common due minute.
 
 Use `--domains` with `chaos` to isolate a noisy domain or test cross-domain
 interference, for example `--domains queue` or `--domains queue,notice`.
