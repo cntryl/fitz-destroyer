@@ -161,6 +161,11 @@ the same one of eight family-actor shards, then panics family 1's Stream and RPC
 actors. The failed family must reject, family 9 must keep progressing without
 cross-family delivery, and broker readiness must remain healthy.
 
+`family-actor-exhaustion-readiness` fails the two provisioned Stream families
+and then the two RPC families one at a time. Readiness must remain healthy with
+one surviving family, withdraw once the domain has zero capacity, and recover
+with exact canaries after a clean-process restart.
+
 `actor-supervision-failpoint` explicitly enables Destroyer-only broker hooks,
 panics all seven domain actors one process at a time and then concurrently under
 active all-domain traffic, requires each failure wave to withdraw readiness and

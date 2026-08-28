@@ -91,6 +91,7 @@ import {
 import { runSameShardFamilyFairness } from "./workloads/same-shard-family-fairness.js";
 import { runFamilyActorPartialFailureIsolation } from "./workloads/family-actor-partial-failure-isolation.js";
 import { runSameShardFamilyFailureIsolation } from "./workloads/same-shard-family-failure-isolation.js";
+import { runFamilyActorExhaustionReadiness } from "./workloads/family-actor-exhaustion-readiness.js";
 import {
   runWireConformance,
   type WireConformanceCase,
@@ -173,7 +174,8 @@ type WorkerMode =
   | "stream-selector-cursor-conformance"
   | "same-shard-family-fairness"
   | "family-actor-partial-failure-isolation"
-  | "same-shard-family-failure-isolation";
+  | "same-shard-family-failure-isolation"
+  | "family-actor-exhaustion-readiness";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -434,6 +436,15 @@ async function runLiveRole(
       ...options,
       url: process.env.DESTROYER_SAME_SHARD_FAILURE_URL ?? "ws://fitz:4090/ws",
       failpointUrl: process.env.DESTROYER_SAME_SHARD_FAILURE_HTTP_URL ?? "http://fitz:4090",
+    }, log);
+  } else if (liveMode === "family-actor-exhaustion-readiness") {
+    const domain = process.env.DESTROYER_FAMILY_EXHAUSTION_DOMAIN;
+    if (domain !== "stream" && domain !== "rpc") throw new Error("DESTROYER_FAMILY_EXHAUSTION_DOMAIN must be stream or rpc");
+    await runFamilyActorExhaustionReadiness(client, {
+      ...options,
+      domain,
+      url: process.env.DESTROYER_FAMILY_EXHAUSTION_URL ?? "ws://fitz:4090/ws",
+      failpointUrl: process.env.DESTROYER_FAMILY_EXHAUSTION_HTTP_URL ?? "http://fitz:4090",
     }, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
@@ -958,6 +969,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     || value === "same-shard-family-fairness"
     || value === "family-actor-partial-failure-isolation"
     || value === "same-shard-family-failure-isolation"
+    || value === "family-actor-exhaustion-readiness"
   ) {
     return value;
   }

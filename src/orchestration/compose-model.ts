@@ -57,7 +57,8 @@ export type LiveRole =
   | "stream-selector-cursor-conformance"
   | "same-shard-family-fairness"
   | "family-actor-partial-failure-isolation"
-  | "same-shard-family-failure-isolation";
+  | "same-shard-family-failure-isolation"
+  | "family-actor-exhaustion-readiness";
 
 export type RoleContainer = {
   id: string;
