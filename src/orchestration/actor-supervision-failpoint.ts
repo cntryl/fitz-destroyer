@@ -6,12 +6,13 @@ import { runQueueRedeliveryScenario } from "./queue-redelivery.js";
 import { requiredEvent } from "./workload-log.js";
 
 export function assertActorSupervisionEvidence(record: Readonly<Record<string, unknown>>): void {
-  if (record.domainsInjected !== 3) throw new Error(`actor failpoints injected for ${String(record.domainsInjected)}/3 domains`);
-  if (record.readinessWithdrawals !== 3) throw new Error(`readiness withdrawals ${String(record.readinessWithdrawals)}/3`);
-  if (record.restartsRecovered !== 3) throw new Error(`restart recoveries ${String(record.restartsRecovered)}/3`);
+  if (record.domainsInjected !== 4) throw new Error(`actor failpoints injected for ${String(record.domainsInjected)}/4 domains`);
+  if (record.readinessWithdrawals !== 4) throw new Error(`readiness withdrawals ${String(record.readinessWithdrawals)}/4`);
+  if (record.restartsRecovered !== 4) throw new Error(`restart recoveries ${String(record.restartsRecovered)}/4`);
   if (record.canaryDeliveries !== record.expectedCanaryDeliveries) throw new Error(`Notice recovery canary deliveries ${String(record.canaryDeliveries)}/${String(record.expectedCanaryDeliveries)}`);
   if (record.queueRecovered !== record.expectedQueueRecovered) throw new Error(`Queue recovery ${String(record.queueRecovered)}/${String(record.expectedQueueRecovered)}`);
   if (record.kvRecovered !== 1) throw new Error(`KV recovery ${String(record.kvRecovered)}/1`);
+  if (record.leaseRecovered !== 1) throw new Error(`Lease recovery ${String(record.leaseRecovered)}/1`);
 }
 
 export async function runActorSupervisionFailpointScenario(stack: ComposeStack, config: RunConfig, shape: WorkloadShape, artifacts: Artifacts): Promise<void> {
@@ -36,17 +37,33 @@ export async function runActorSupervisionFailpointScenario(stack: ComposeStack, 
   domainsInjected += 1;
   readinessWithdrawals += 1;
   restartsRecovered += 1;
-  const kvCanary = await stack.startRoleContainers("canary", 1, canaryShape);
+  const kvCanary = await stack.startRoleContainers("canary", 1, canaryShape, {
+    DESTROYER_NAMESPACE: recoveryCanaryNamespace(shape.namespace, "kv"),
+  });
   const kvCanaryLogs = await stack.finishRoleContainers(kvCanary, "actor-supervision-kv-recovery-canary");
   const kvComplete = requiredEvent(onlyLog(kvCanaryLogs), "canary_complete");
   const kvRecovered = Array.isArray(kvComplete.domains) && kvComplete.domains.includes("kv") && kvComplete.operationsPerDomain === 1 ? 1 : 0;
-  const evidence = { domainsInjected, readinessWithdrawals, restartsRecovered, canaryDeliveries: expectedCanaryDeliveries, expectedCanaryDeliveries, queueRecovered: expectedQueueRecovered, expectedQueueRecovered, kvRecovered };
+  await injectAndRestart("lease", stack, config);
+  domainsInjected += 1;
+  readinessWithdrawals += 1;
+  restartsRecovered += 1;
+  const leaseCanary = await stack.startRoleContainers("canary", 1, canaryShape, {
+    DESTROYER_NAMESPACE: recoveryCanaryNamespace(shape.namespace, "lease"),
+  });
+  const leaseCanaryLogs = await stack.finishRoleContainers(leaseCanary, "actor-supervision-lease-recovery-canary");
+  const leaseComplete = requiredEvent(onlyLog(leaseCanaryLogs), "canary_complete");
+  const leaseRecovered = Array.isArray(leaseComplete.domains) && leaseComplete.domains.includes("lease") && leaseComplete.operationsPerDomain === 1 ? 1 : 0;
+  const evidence = { domainsInjected, readinessWithdrawals, restartsRecovered, canaryDeliveries: expectedCanaryDeliveries, expectedCanaryDeliveries, queueRecovered: expectedQueueRecovered, expectedQueueRecovered, kvRecovered, leaseRecovered };
   assertActorSupervisionEvidence(evidence);
   await artifacts.writeJson("actor-supervision-failpoint-evidence.json", evidence);
   await artifacts.event("actor_supervision_failpoint_complete", { ...evidence, elapsedMs: Math.round(performance.now() - startedAt) });
 }
 
-async function injectAndRestart(domain: "notice" | "queue" | "kv", stack: ComposeStack, config: RunConfig): Promise<void> {
+export function recoveryCanaryNamespace(namespace: string, domain: string): string {
+  return `${namespace}-${domain}-recovery`;
+}
+
+async function injectAndRestart(domain: "notice" | "queue" | "kv" | "lease", stack: ComposeStack, config: RunConfig): Promise<void> {
   const response = await fetch(`http://127.0.0.1:${config.port}/destroyer/failpoints/${domain}-actor-panic`, {
     method: "POST",
     signal: AbortSignal.timeout(config.requestTimeoutMs),
