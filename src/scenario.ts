@@ -44,6 +44,7 @@ import { runSaturatedSlowRecipientIsolationScenario } from "./orchestration/satu
 import { runShutdownReconnectCleanupStormScenario } from "./orchestration/shutdown-reconnect-cleanup-storm.js";
 import { runControlLaneCleanupUnderSaturationScenario } from "./orchestration/control-lane-cleanup-under-saturation.js";
 import { runRouteFamilyIsolationMatrixScenario } from "./orchestration/route-family-isolation-matrix.js";
+import { runSameShardFamilyFairnessScenario } from "./orchestration/same-shard-family-fairness.js";
 import { runRpcResponseStateConformanceScenario } from "./orchestration/rpc-response-state-conformance.js";
 import { runResponseEnvelopeBoundariesScenario } from "./orchestration/response-envelope-boundaries.js";
 import { runLeaseWaiterDisconnectRacesScenario } from "./orchestration/lease-waiter-disconnect-races.js";
@@ -341,6 +342,8 @@ async function executeWorkload(
     await runWildcardRegistrationQuotaReclamationScenario(stack, config, shape, artifacts);
   } else if (scenario === "stream-selector-cursor-conformance") {
     await runStreamSelectorCursorConformanceScenario(stack, config, shape, artifacts);
+  } else if (scenario === "same-shard-family-fairness") {
+    await runSameShardFamilyFairnessScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

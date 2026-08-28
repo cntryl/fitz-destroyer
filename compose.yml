@@ -27,6 +27,7 @@ services:
       - "127.0.0.1::9100"
 
   fitz:
+    cpus: "${FITZ_CPU_LIMIT:-0}"
     image: "${FITZ_IMAGE:-fitz-destroyer-local-fitz:latest}"
     build:
       context: "${FITZ_SOURCE_DIR:-../fitz}"

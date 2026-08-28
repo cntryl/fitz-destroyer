@@ -88,6 +88,7 @@ import {
   runSlowRecipientObserver,
   runSlowRecipientPublisher,
 } from "./workloads/slow-recipient-isolation.js";
+import { runSameShardFamilyFairness } from "./workloads/same-shard-family-fairness.js";
 import {
   runWireConformance,
   type WireConformanceCase,
@@ -167,7 +168,8 @@ type WorkerMode =
   | "response-envelope-boundaries"
   | "lease-waiter-disconnect-races"
   | "wildcard-registration-quota-reclamation"
-  | "stream-selector-cursor-conformance";
+  | "stream-selector-cursor-conformance"
+  | "same-shard-family-fairness";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -415,6 +417,8 @@ async function runLiveRole(
     await runWildcardRegistrationQuotaReclamation(client, { ...options, url: process.env.DESTROYER_WILDCARD_QUOTA_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "stream-selector-cursor-conformance") {
     await runStreamSelectorCursorConformance(client, { ...options, url: process.env.DESTROYER_STREAM_SELECTOR_URL ?? "ws://fitz:4090/ws" }, log);
+  } else if (liveMode === "same-shard-family-fairness") {
+    await runSameShardFamilyFairness(client, { ...options, url: process.env.DESTROYER_SAME_SHARD_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
   } else if (
@@ -935,6 +939,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     || value === "lease-waiter-disconnect-races"
     || value === "wildcard-registration-quota-reclamation"
     || value === "stream-selector-cursor-conformance"
+    || value === "same-shard-family-fairness"
   ) {
     return value;
   }

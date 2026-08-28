@@ -152,6 +152,10 @@ multiple realms, areas, and resources, then checks eight selector shapes across
 resource, area, realm, and global cursor axes with one-record pages. A fresh
 connection must continue from the prior global cursor without gaps or duplicates.
 
+`same-shard-family-fairness` pins two authenticated route families to one
+family-actor shard, continuously fills one family's Notice lane, and requires
+every sibling-family delivery canary to complete within the request timeout.
+
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through
 small pages. It requires exact global offsets, resource-local offsets, routes,

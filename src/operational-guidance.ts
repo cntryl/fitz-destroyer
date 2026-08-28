@@ -831,6 +831,7 @@ function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly E
     "lease-waiter-disconnect-races": "lease_waiter_disconnect_races_complete",
     "wildcard-registration-quota-reclamation": "wildcard_registration_quota_reclamation_complete",
     "stream-selector-cursor-conformance": "stream_selector_cursor_conformance_complete",
+    "same-shard-family-fairness": "same_shard_family_fairness_complete",
     chaos: "chaos_complete",
     "domain-pressure": "pressure_complete",
     soak: "pressure_complete",
