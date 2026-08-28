@@ -3,13 +3,15 @@ import type { WorkloadShape } from "../workloads/model.js";
 import type { Artifacts } from "./artifacts.js";
 import type { ComposeStack } from "./compose.js";
 import { runQueueRedeliveryScenario } from "./queue-redelivery.js";
+import { requiredEvent } from "./workload-log.js";
 
 export function assertActorSupervisionEvidence(record: Readonly<Record<string, unknown>>): void {
-  if (record.domainsInjected !== 2) throw new Error(`actor failpoints injected for ${String(record.domainsInjected)}/2 domains`);
-  if (record.readinessWithdrawals !== 2) throw new Error(`readiness withdrawals ${String(record.readinessWithdrawals)}/2`);
-  if (record.restartsRecovered !== 2) throw new Error(`restart recoveries ${String(record.restartsRecovered)}/2`);
+  if (record.domainsInjected !== 3) throw new Error(`actor failpoints injected for ${String(record.domainsInjected)}/3 domains`);
+  if (record.readinessWithdrawals !== 3) throw new Error(`readiness withdrawals ${String(record.readinessWithdrawals)}/3`);
+  if (record.restartsRecovered !== 3) throw new Error(`restart recoveries ${String(record.restartsRecovered)}/3`);
   if (record.canaryDeliveries !== record.expectedCanaryDeliveries) throw new Error(`Notice recovery canary deliveries ${String(record.canaryDeliveries)}/${String(record.expectedCanaryDeliveries)}`);
   if (record.queueRecovered !== record.expectedQueueRecovered) throw new Error(`Queue recovery ${String(record.queueRecovered)}/${String(record.expectedQueueRecovered)}`);
+  if (record.kvRecovered !== 1) throw new Error(`KV recovery ${String(record.kvRecovered)}/1`);
 }
 
 export async function runActorSupervisionFailpointScenario(stack: ComposeStack, config: RunConfig, shape: WorkloadShape, artifacts: Artifacts): Promise<void> {
@@ -30,13 +32,21 @@ export async function runActorSupervisionFailpointScenario(stack: ComposeStack, 
   restartsRecovered += 1;
   await runQueueRedeliveryScenario(stack, config, canaryShape, artifacts);
   const expectedQueueRecovered = 1;
-  const evidence = { domainsInjected, readinessWithdrawals, restartsRecovered, canaryDeliveries: expectedCanaryDeliveries, expectedCanaryDeliveries, queueRecovered: expectedQueueRecovered, expectedQueueRecovered };
+  await injectAndRestart("kv", stack, config);
+  domainsInjected += 1;
+  readinessWithdrawals += 1;
+  restartsRecovered += 1;
+  const kvCanary = await stack.startRoleContainers("canary", 1, canaryShape);
+  const kvCanaryLogs = await stack.finishRoleContainers(kvCanary, "actor-supervision-kv-recovery-canary");
+  const kvComplete = requiredEvent(onlyLog(kvCanaryLogs), "canary_complete");
+  const kvRecovered = Array.isArray(kvComplete.domains) && kvComplete.domains.includes("kv") && kvComplete.operationsPerDomain === 1 ? 1 : 0;
+  const evidence = { domainsInjected, readinessWithdrawals, restartsRecovered, canaryDeliveries: expectedCanaryDeliveries, expectedCanaryDeliveries, queueRecovered: expectedQueueRecovered, expectedQueueRecovered, kvRecovered };
   assertActorSupervisionEvidence(evidence);
   await artifacts.writeJson("actor-supervision-failpoint-evidence.json", evidence);
   await artifacts.event("actor_supervision_failpoint_complete", { ...evidence, elapsedMs: Math.round(performance.now() - startedAt) });
 }
 
-async function injectAndRestart(domain: "notice" | "queue", stack: ComposeStack, config: RunConfig): Promise<void> {
+async function injectAndRestart(domain: "notice" | "queue" | "kv", stack: ComposeStack, config: RunConfig): Promise<void> {
   const response = await fetch(`http://127.0.0.1:${config.port}/destroyer/failpoints/${domain}-actor-panic`, {
     method: "POST",
     signal: AbortSignal.timeout(config.requestTimeoutMs),
@@ -47,6 +57,12 @@ async function injectAndRestart(domain: "notice" | "queue", stack: ComposeStack,
   if (!await waitForReadinessWithdrawal(config.port, config.requestTimeoutMs)) throw new Error(`${domain} actor panic did not withdraw readiness`);
   await stack.stopFitz();
   await stack.restartFitz();
+}
+
+function onlyLog(logs: ReadonlyMap<string, string>): string {
+  const log = [...logs.values()][0];
+  if (logs.size !== 1 || log === undefined) throw new Error(`Expected one canary log, found ${logs.size}`);
+  return log;
 }
 
 async function waitForReadinessWithdrawal(port: number, timeoutMs: number): Promise<boolean> {

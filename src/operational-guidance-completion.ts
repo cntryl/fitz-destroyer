@@ -136,7 +136,7 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
   },
   "actor-supervision-failpoint": {
     event: "actor_supervision_failpoint_complete",
-    fields: [["domainsInjected", "Domain actor failpoints"], ["readinessWithdrawals", "Readiness withdrawals"], ["restartsRecovered", "Recovered restarts"], ["canaryDeliveries", "Post-restart Notice deliveries"], ["queueRecovered", "Post-restart Queue completions"]],
+    fields: [["domainsInjected", "Domain actor failpoints"], ["readinessWithdrawals", "Readiness withdrawals"], ["restartsRecovered", "Recovered restarts"], ["canaryDeliveries", "Post-restart Notice deliveries"], ["queueRecovered", "Post-restart Queue completions"], ["kvRecovered", "Post-restart KV canaries"]],
   },
 };
 
