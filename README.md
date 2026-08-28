@@ -142,6 +142,11 @@ payloads must reject, and a small follow-up operation must succeed in every doma
 them around owner release, and requires zero ghost acquisitions, zero pending
 waiters, monotonic fencing, and successful same-route replacement ownership.
 
+`wildcard-registration-quota-reclamation` fills the per-session wildcard
+allowance for Queue, KV, Stream, Schedule, Notice, and RPC, proves the next
+registration is rejected, then verifies reclamation through both explicit
+unsubscribe and transport disconnect. Lease accepts exact subscriptions only.
+
 `stream-global-recovery` commits an ordered ledger across multiple realms,
 areas, and resources, discards Fitz's cache, and replays `stream://**` through
 small pages. It requires exact global offsets, resource-local offsets, routes,

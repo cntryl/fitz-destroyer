@@ -829,6 +829,7 @@ function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly E
     "rpc-response-state-conformance": "rpc_response_state_conformance_complete",
     "response-envelope-boundaries": "response_envelope_boundaries_complete",
     "lease-waiter-disconnect-races": "lease_waiter_disconnect_races_complete",
+    "wildcard-registration-quota-reclamation": "wildcard_registration_quota_reclamation_complete",
     chaos: "chaos_complete",
     "domain-pressure": "pressure_complete",
     soak: "pressure_complete",

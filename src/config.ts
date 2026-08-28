@@ -51,6 +51,7 @@ export type ScenarioName =
   | "rpc-response-state-conformance"
   | "response-envelope-boundaries"
   | "lease-waiter-disconnect-races"
+  | "wildcard-registration-quota-reclamation"
   | "all";
 export type ScaleName = "smoke" | "standard" | "large";
 export type ClientProfile = "end-to-end" | "broker-isolation";
@@ -136,7 +137,7 @@ export type RunConfig = Scale & {
   destroyerImage: string | undefined;
 };
 
-const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|shutdown-reconnect-cleanup-storm|control-lane-cleanup-under-saturation|route-family-isolation-matrix|rpc-response-state-conformance|response-envelope-boundaries|lease-waiter-disconnect-races|all> [options]
+const USAGE = `fitz-destroyer <clean-restart|cache-loss|chaos|durability-crash-cuts|queue-overload-recovery|response-loss|active-graceful-shutdown|half-open-session|authorization-isolation|stream-global-recovery|queue-dead-letter-fencing|cold-boot-provider-outage|hostile-rpc-worker|upgrade-recovery|cross-transport-recovery|outbound-blackhole|broker-pause|route-cardinality-churn|cache-and-disk-exhaustion|hot-route-canary|lease-contention|notice-fanout|protocol-abuse|queue-redelivery|schedule-delivery|session-boundaries|rpc-pressure|rpc-stream-hose|connection-storm|domain-pressure|soak|storage-faults|queue-lifecycle|schedule-outage|transaction-contention|stream-replay|live-churn|lease-route-aliasing|tcp-preauth-framing-slowloris|connect-pipeline-family-rebind|ephemeral-reply-loss-cleanup|saturated-slow-recipient-isolation|shutdown-reconnect-cleanup-storm|control-lane-cleanup-under-saturation|route-family-isolation-matrix|rpc-response-state-conformance|response-envelope-boundaries|lease-waiter-disconnect-races|wildcard-registration-quota-reclamation|all> [options]
 
   --scale <smoke|standard|large>  Workload preset (default: smoke)
   --resources <n>                 Families per durable domain
@@ -407,6 +408,7 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "rpc-response-state-conformance" ||
     value === "response-envelope-boundaries" ||
     value === "lease-waiter-disconnect-races" ||
+    value === "wildcard-registration-quota-reclamation" ||
     value === "all"
   );
 }

@@ -148,6 +148,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "rpc-response-state-conformance",
     "response-envelope-boundaries",
     "lease-waiter-disconnect-races",
+    "wildcard-registration-quota-reclamation",
   ];
 
   // Act

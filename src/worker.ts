@@ -105,6 +105,7 @@ import {
 import { runRpcResponseStateConformance } from "./workloads/rpc-response-state-conformance.js";
 import { runResponseEnvelopeBoundaries } from "./workloads/response-envelope-boundaries.js";
 import { runLeaseWaiterDisconnectRaces } from "./workloads/lease-waiter-disconnect-races.js";
+import { runWildcardRegistrationQuotaReclamation } from "./workloads/wildcard-registration-quota-reclamation.js";
 
 type WorkerMode =
   | "load"
@@ -163,7 +164,8 @@ type WorkerMode =
   | "route-family-isolation-matrix"
   | "rpc-response-state-conformance"
   | "response-envelope-boundaries"
-  | "lease-waiter-disconnect-races";
+  | "lease-waiter-disconnect-races"
+  | "wildcard-registration-quota-reclamation";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -407,6 +409,8 @@ async function runLiveRole(
     await runResponseEnvelopeBoundaries(client, options, log);
   } else if (liveMode === "lease-waiter-disconnect-races") {
     await runLeaseWaiterDisconnectRaces(client, { ...options, url: process.env.DESTROYER_LEASE_RACE_URL ?? "ws://fitz:4090/ws" }, log);
+  } else if (liveMode === "wildcard-registration-quota-reclamation") {
+    await runWildcardRegistrationQuotaReclamation(client, { ...options, url: process.env.DESTROYER_WILDCARD_QUOTA_URL ?? "ws://fitz:4090/ws" }, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
   } else if (
@@ -925,6 +929,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     value === "rpc-response-state-conformance" ||
     value === "response-envelope-boundaries"
     || value === "lease-waiter-disconnect-races"
+    || value === "wildcard-registration-quota-reclamation"
   ) {
     return value;
   }

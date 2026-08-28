@@ -107,6 +107,7 @@ jobs:
           - rpc-response-state-conformance
           - response-envelope-boundaries
           - lease-waiter-disconnect-races
+          - wildcard-registration-quota-reclamation
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7

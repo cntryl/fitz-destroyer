@@ -47,6 +47,7 @@ import { runRouteFamilyIsolationMatrixScenario } from "./orchestration/route-fam
 import { runRpcResponseStateConformanceScenario } from "./orchestration/rpc-response-state-conformance.js";
 import { runResponseEnvelopeBoundariesScenario } from "./orchestration/response-envelope-boundaries.js";
 import { runLeaseWaiterDisconnectRacesScenario } from "./orchestration/lease-waiter-disconnect-races.js";
+import { runWildcardRegistrationQuotaReclamationScenario } from "./orchestration/wildcard-registration-quota-reclamation.js";
 import { totalDurableEntries, type WorkloadShape } from "./workloads/model.js";
 
 export type ConcreteScenario = Exclude<ScenarioName, "all">;
@@ -335,6 +336,8 @@ async function executeWorkload(
     await runResponseEnvelopeBoundariesScenario(stack, config, shape, artifacts);
   } else if (scenario === "lease-waiter-disconnect-races") {
     await runLeaseWaiterDisconnectRacesScenario(stack, config, shape, artifacts);
+  } else if (scenario === "wildcard-registration-quota-reclamation") {
+    await runWildcardRegistrationQuotaReclamationScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

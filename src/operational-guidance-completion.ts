@@ -122,6 +122,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "lease_waiter_disconnect_races_complete",
     fields: [["rounds", "Race rounds"], ["waitersQueued", "Waiters queued"], ["waitersDisconnected", "Waiters disconnected"], ["replacementAcquisitions", "Replacement acquisitions"], ["ghostAcquisitions", "Ghost acquisitions"], ["fencingRegressions", "Fencing regressions"]],
   },
+  "wildcard-registration-quota-reclamation": {
+    event: "wildcard_registration_quota_reclamation_complete",
+    fields: [["domains", "Quota domains"], ["registrations", "Registrations"], ["limitRejections", "Limit rejections"], ["unsubscribeReclaims", "Unsubscribe reclaims"], ["disconnectReclaims", "Disconnect reclaims"], ["canaryFailures", "Canary failures"]],
+  },
 };
 
 export function completionMetricsForScenario(
