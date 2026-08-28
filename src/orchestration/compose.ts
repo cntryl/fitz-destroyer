@@ -92,7 +92,7 @@ export class ComposeStack {
       DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
       DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
       DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
-      ...(config.scenario === "actor-supervision-failpoint" || config.scenario === "family-actor-partial-failure-isolation" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-exhaustion-readiness" || config.scenario === "family-actor-degradation-observability" ? { FITZ_DESTROYER_FAILPOINTS: "enabled" } : {}),
+      ...(config.scenario === "actor-supervision-failpoint" || config.scenario === "family-actor-partial-failure-isolation" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-exhaustion-readiness" || config.scenario === "family-actor-degradation-observability" || config.scenario === "family-actor-inflight-concurrent-failure" ? { FITZ_DESTROYER_FAILPOINTS: "enabled" } : {}),
       ...(config.scenario === "authorization-isolation" ||
         config.scenario === "connect-pipeline-family-rebind" ||
         config.scenario === "route-family-isolation-matrix" ||
@@ -100,16 +100,17 @@ export class ComposeStack {
         config.scenario === "family-actor-partial-failure-isolation" ||
         config.scenario === "same-shard-family-failure-isolation" ||
         config.scenario === "family-actor-exhaustion-readiness" ||
-        config.scenario === "family-actor-degradation-observability"
+        config.scenario === "family-actor-degradation-observability" ||
+        config.scenario === "family-actor-inflight-concurrent-failure"
         ? {
             FITZ_AUTH_REQUIRED: "true",
             FITZ_ASSUME_EXTERNAL_TLS: "true",
             FITZ_JWT_HMAC_SECRET: "fitz-destroyer-local-auth-only",
             FITZ_JWT_AUDIENCES: "fitz-destroyer",
-            FITZ_ROUTE_FAMILIES: config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" ? "1,2,3,4,5,6,7,8,9" : "1,2",
-            FITZ_ROUTE_FAMILY_MAP: config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" ? "identity-a=1,identity-b=9" : "identity-a=1,identity-b=2",
+            FITZ_ROUTE_FAMILIES: config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-inflight-concurrent-failure" ? "1,2,3,4,5,6,7,8,9" : "1,2",
+            FITZ_ROUTE_FAMILY_MAP: config.scenario === "family-actor-inflight-concurrent-failure" ? "identity-a=1,identity-b=2,identity-c=9" : config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" ? "identity-a=1,identity-b=9" : "identity-a=1,identity-b=2",
             FITZ_ROUTE_FAMILY_CLAIM: "tid",
-            ...(config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" ? { FITZ_CPU_LIMIT: "8" } : {}),
+            ...(config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-inflight-concurrent-failure" ? { FITZ_CPU_LIMIT: "8" } : {}),
           }
         : {}),
     };

@@ -172,6 +172,13 @@ must increment exactly once, repeated rejected work must not inflate it,
 readiness and sibling canaries must remain healthy, and restart must reset the
 process-local metric.
 
+`family-actor-inflight-concurrent-failure` opens uncommitted Stream sessions
+and active RPC calls in two families on different shards, fails both families
+concurrently, and requires every operation to terminate within its bound. A
+third family sharing one failed shard must keep progressing, readiness and
+failure metrics must stay consistent, and all-domain canaries must recover
+after each of three clean-process restart cycles.
+
 `actor-supervision-failpoint` explicitly enables Destroyer-only broker hooks,
 panics all seven domain actors one process at a time and then concurrently under
 active all-domain traffic, requires each failure wave to withdraw readiness and

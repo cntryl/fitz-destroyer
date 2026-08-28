@@ -154,6 +154,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "family_actor_degradation_observability_complete",
     fields: [["domainsObserved", "Observed degraded domains"], ["metricIncrements", "Failure metric increments"], ["duplicateMetricIncrements", "Duplicate metric increments"], ["siblingCanaries", "Healthy sibling canaries"], ["readinessChecks", "Healthy readiness checks"], ["restartMetricResets", "Restart metric resets"]],
   },
+  "family-actor-inflight-concurrent-failure": {
+    event: "family_actor_inflight_concurrent_failure_complete",
+    fields: [["cycles", "Failure cycles"], ["concurrentFailures", "Concurrent family failures"], ["streamInflightRejections", "Stream in-flight rejections"], ["rpcInflightTerminations", "RPC in-flight terminations"], ["siblingOperations", "Healthy sibling operations"], ["readinessChecks", "Healthy readiness checks"], ["metricIncrements", "Failure metric increments"], ["restartRecoveries", "Restart recoveries"], ["crossFamilyDeliveries", "Cross-family deliveries"]],
+  },
 };
 
 export function completionMetricsForScenario(

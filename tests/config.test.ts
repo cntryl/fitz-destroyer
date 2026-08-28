@@ -156,6 +156,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "same-shard-family-failure-isolation",
     "family-actor-exhaustion-readiness",
     "family-actor-degradation-observability",
+    "family-actor-inflight-concurrent-failure",
   ];
 
   // Act

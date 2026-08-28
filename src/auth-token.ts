@@ -4,7 +4,7 @@ export const DESTROYER_AUTH_SECRET = "fitz-destroyer-local-auth-only";
 export const DESTROYER_AUTH_AUDIENCE = "fitz-destroyer";
 
 export function createDestroyerToken(
-  identity: "identity-a" | "identity-b",
+  identity: "identity-a" | "identity-b" | "identity-c",
   permissions: readonly string[],
   nowMs = Date.now(),
 ): string {

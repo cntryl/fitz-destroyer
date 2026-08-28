@@ -58,7 +58,8 @@ export type LiveRole =
   | "same-shard-family-fairness"
   | "family-actor-partial-failure-isolation"
   | "same-shard-family-failure-isolation"
-  | "family-actor-exhaustion-readiness";
+  | "family-actor-exhaustion-readiness"
+  | "family-actor-inflight-concurrent-failure";
 
 export type RoleContainer = {
   id: string;

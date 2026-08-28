@@ -92,6 +92,7 @@ import { runSameShardFamilyFairness } from "./workloads/same-shard-family-fairne
 import { runFamilyActorPartialFailureIsolation } from "./workloads/family-actor-partial-failure-isolation.js";
 import { runSameShardFamilyFailureIsolation } from "./workloads/same-shard-family-failure-isolation.js";
 import { runFamilyActorExhaustionReadiness } from "./workloads/family-actor-exhaustion-readiness.js";
+import { runFamilyActorInflightConcurrentFailure } from "./workloads/family-actor-inflight-concurrent-failure.js";
 import {
   runWireConformance,
   type WireConformanceCase,
@@ -175,7 +176,8 @@ type WorkerMode =
   | "same-shard-family-fairness"
   | "family-actor-partial-failure-isolation"
   | "same-shard-family-failure-isolation"
-  | "family-actor-exhaustion-readiness";
+  | "family-actor-exhaustion-readiness"
+  | "family-actor-inflight-concurrent-failure";
 type Counters = Record<Domain, { success: number; error: number }>;
 
 const mode = requiredMode(process.env.DESTROYER_MODE);
@@ -445,6 +447,12 @@ async function runLiveRole(
       domain,
       url: process.env.DESTROYER_FAMILY_EXHAUSTION_URL ?? "ws://fitz:4090/ws",
       failpointUrl: process.env.DESTROYER_FAMILY_EXHAUSTION_HTTP_URL ?? "http://fitz:4090",
+    }, log);
+  } else if (liveMode === "family-actor-inflight-concurrent-failure") {
+    await runFamilyActorInflightConcurrentFailure(client, {
+      ...options,
+      url: process.env.DESTROYER_FAMILY_INFLIGHT_URL ?? "ws://fitz:4090/ws",
+      failpointUrl: process.env.DESTROYER_FAMILY_INFLIGHT_HTTP_URL ?? "http://fitz:4090",
     }, log);
   } else if (liveMode === "exhaustion-probe") {
     await runExhaustionProbe(client, options, log);
@@ -970,6 +978,7 @@ function requiredMode(value: string | undefined): WorkerMode {
     || value === "family-actor-partial-failure-isolation"
     || value === "same-shard-family-failure-isolation"
     || value === "family-actor-exhaustion-readiness"
+    || value === "family-actor-inflight-concurrent-failure"
   ) {
     return value;
   }
