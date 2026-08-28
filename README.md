@@ -156,6 +156,11 @@ connection must continue from the prior global cursor without gaps or duplicates
 family-actor shard, continuously fills one family's Notice lane, and requires
 every sibling-family delivery canary to complete within the request timeout.
 
+`same-shard-family-failure-isolation` pins authenticated families 1 and 9 to
+the same one of eight family-actor shards, then panics family 1's Stream and RPC
+actors. The failed family must reject, family 9 must keep progressing without
+cross-family delivery, and broker readiness must remain healthy.
+
 `actor-supervision-failpoint` explicitly enables Destroyer-only broker hooks,
 panics all seven domain actors one process at a time and then concurrently under
 active all-domain traffic, requires each failure wave to withdraw readiness and

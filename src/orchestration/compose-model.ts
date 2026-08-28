@@ -56,7 +56,8 @@ export type LiveRole =
   | "wildcard-registration-quota-reclamation"
   | "stream-selector-cursor-conformance"
   | "same-shard-family-fairness"
-  | "family-actor-partial-failure-isolation";
+  | "family-actor-partial-failure-isolation"
+  | "same-shard-family-failure-isolation";
 
 export type RoleContainer = {
   id: string;

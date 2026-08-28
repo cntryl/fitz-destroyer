@@ -353,6 +353,7 @@ function fixtureEvents(scenario: ConcreteScenario): object[] {
   if (scenario === "same-shard-family-fairness") return [{ event: "same_shard_family_fairness_complete", noisyCompleted: 2_048, canariesAttempted: 32, canariesCompleted: 32, canaryErrors: 0, longestCanaryMs: 10, requestTimeoutMs: 1_000, elapsedMs: 1_000 }];
   if (scenario === "actor-supervision-failpoint") return [{ event: "actor_supervision_failpoint_complete", domainsInjected: 7, correlatedDomainsInjected: 7, activeFaultClients: 4, activeFaultErrors: 4, readinessWithdrawals: 8, restartsRecovered: 8, canaryDeliveries: 4, queueRecovered: 1, kvRecovered: 1, leaseRecovered: 1, scheduleRecovered: 1, streamRecovered: 1, rpcRecovered: 1, correlatedRecoveryOperations: 7, elapsedMs: 1_000 }];
   if (scenario === "family-actor-partial-failure-isolation") return [{ event: "family_actor_partial_failure_isolation_complete", targetedFamilies: 2, failedFamilyRejections: 2, siblingOperations: 2, readinessChecks: 2, crossFamilyDeliveries: 0, elapsedMs: 1_000 }];
+  if (scenario === "same-shard-family-failure-isolation") return [{ event: "same_shard_family_failure_isolation_complete", shardCount: 8, failedFamily: 1, siblingFamily: 9, failedFamilyRejections: 2, siblingOperations: 2, readinessChecks: 2, crossFamilyDeliveries: 0, elapsedMs: 1_000 }];
   return [];
 }
 

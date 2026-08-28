@@ -142,6 +142,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "family_actor_partial_failure_isolation_complete",
     fields: [["targetedFamilies", "Targeted family failures"], ["failedFamilyRejections", "Failed-family rejections"], ["siblingOperations", "Sibling operations"], ["readinessChecks", "Healthy readiness checks"], ["crossFamilyDeliveries", "Cross-family deliveries"]],
   },
+  "same-shard-family-failure-isolation": {
+    event: "same_shard_family_failure_isolation_complete",
+    fields: [["shardCount", "Configured shards"], ["failedFamily", "Failed family"], ["siblingFamily", "Same-shard sibling family"], ["failedFamilyRejections", "Failed-family rejections"], ["siblingOperations", "Sibling operations"], ["readinessChecks", "Healthy readiness checks"], ["crossFamilyDeliveries", "Cross-family deliveries"]],
+  },
 };
 
 export function completionMetricsForScenario(

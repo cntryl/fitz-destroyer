@@ -153,6 +153,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "same-shard-family-fairness",
     "actor-supervision-failpoint",
     "family-actor-partial-failure-isolation",
+    "same-shard-family-failure-isolation",
   ];
 
   // Act

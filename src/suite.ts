@@ -58,6 +58,7 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "same-shard-family-fairness",
   "actor-supervision-failpoint",
   "family-actor-partial-failure-isolation",
+  "same-shard-family-failure-isolation",
 ];
 
 export type SuiteSummary = {
