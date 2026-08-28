@@ -136,7 +136,7 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
   },
   "actor-supervision-failpoint": {
     event: "actor_supervision_failpoint_complete",
-    fields: [["domainsInjected", "Single-domain actor failpoints"], ["correlatedDomainsInjected", "Correlated domain actor failpoints"], ["readinessWithdrawals", "Readiness withdrawals"], ["restartsRecovered", "Recovered restarts"], ["canaryDeliveries", "Post-restart Notice deliveries"], ["queueRecovered", "Post-restart Queue completions"], ["kvRecovered", "Post-restart KV canaries"], ["leaseRecovered", "Post-restart Lease canaries"], ["scheduleRecovered", "Post-restart Schedule canaries"], ["streamRecovered", "Post-restart Stream canaries"], ["rpcRecovered", "Post-restart RPC canaries"], ["correlatedRecoveryOperations", "Post-correlated-failure domain canaries"]],
+    fields: [["domainsInjected", "Single-domain actor failpoints"], ["correlatedDomainsInjected", "Correlated domain actor failpoints"], ["activeFaultClients", "Active-fault clients"], ["activeFaultErrors", "Completed active-fault errors"], ["readinessWithdrawals", "Readiness withdrawals"], ["restartsRecovered", "Recovered restarts"], ["canaryDeliveries", "Post-restart Notice deliveries"], ["queueRecovered", "Post-restart Queue completions"], ["kvRecovered", "Post-restart KV canaries"], ["leaseRecovered", "Post-restart Lease canaries"], ["scheduleRecovered", "Post-restart Schedule canaries"], ["streamRecovered", "Post-restart Stream canaries"], ["rpcRecovered", "Post-restart RPC canaries"], ["correlatedRecoveryOperations", "Post-correlated-failure domain canaries"]],
   },
 };
 

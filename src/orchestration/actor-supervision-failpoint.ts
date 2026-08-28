@@ -18,6 +18,10 @@ export function assertActorSupervisionEvidence(record: Readonly<Record<string, u
   if (record.streamRecovered !== 1) throw new Error(`Stream recovery ${String(record.streamRecovered)}/1`);
   if (record.rpcRecovered !== 1) throw new Error(`RPC recovery ${String(record.rpcRecovered)}/1`);
   if (record.correlatedRecoveryOperations !== 7) throw new Error(`Correlated recovery ${String(record.correlatedRecoveryOperations)}/7 operations`);
+  if (record.activeFaultClients !== record.expectedActiveFaultClients) throw new Error(`Active-fault clients ${String(record.activeFaultClients)}/${String(record.expectedActiveFaultClients)}`);
+  if (typeof record.activeFaultErrors !== "number" || typeof record.activeFaultClients !== "number" || record.activeFaultErrors < record.activeFaultClients) {
+    throw new Error(`Active-fault errors ${String(record.activeFaultErrors)}/${String(record.activeFaultClients)} clients`);
+  }
 }
 
 export async function runActorSupervisionFailpointScenario(stack: ComposeStack, config: RunConfig, shape: WorkloadShape, artifacts: Artifacts): Promise<void> {
@@ -88,8 +92,18 @@ export async function runActorSupervisionFailpointScenario(stack: ComposeStack, 
   const rpcCanaryLogs = await stack.finishRoleContainers(rpcCanary, "actor-supervision-rpc-recovery-canary");
   const rpcComplete = requiredEvent(onlyLog(rpcCanaryLogs), "canary_complete");
   const rpcRecovered = Array.isArray(rpcComplete.domains) && rpcComplete.domains.includes("rpc") && rpcComplete.operationsPerDomain === 1 ? 1 : 0;
-  await injectAndRestart("all-domain", stack, config);
+  const activeFaultStartedAt = new Date();
+  await stack.startClients(config.clientReplicas);
+  await stack.waitForAllClientDomains(activeFaultStartedAt, config.clientReplicas);
+  const faultStartedAt = new Date();
+  await injectAndWaitForReadinessWithdrawal("all-domain", config);
+  const activeFaultErrors = await stack.waitForAllClientErrors(faultStartedAt, config.clientReplicas);
+  await stack.stopBombardClientsAndCapture("actor-supervision-active-fault");
+  await stack.stopFitz();
+  await stack.restartFitz();
   const correlatedDomainsInjected = 7;
+  const activeFaultClients = config.clientReplicas;
+  const expectedActiveFaultClients = config.clientReplicas;
   readinessWithdrawals += 1;
   restartsRecovered += 1;
   const correlatedCanary = await stack.startRoleContainers("canary", 1, canaryShape, {
@@ -100,7 +114,7 @@ export async function runActorSupervisionFailpointScenario(stack: ComposeStack, 
   const correlatedRecoveryOperations = Array.isArray(correlatedComplete.domains) && correlatedComplete.operationsPerDomain === 1
     ? correlatedComplete.domains.length
     : 0;
-  const evidence = { domainsInjected, correlatedDomainsInjected, readinessWithdrawals, restartsRecovered, canaryDeliveries: expectedCanaryDeliveries, expectedCanaryDeliveries, queueRecovered: expectedQueueRecovered, expectedQueueRecovered, kvRecovered, leaseRecovered, scheduleRecovered, streamRecovered, rpcRecovered, correlatedRecoveryOperations };
+  const evidence = { domainsInjected, correlatedDomainsInjected, activeFaultClients, expectedActiveFaultClients, activeFaultErrors, readinessWithdrawals, restartsRecovered, canaryDeliveries: expectedCanaryDeliveries, expectedCanaryDeliveries, queueRecovered: expectedQueueRecovered, expectedQueueRecovered, kvRecovered, leaseRecovered, scheduleRecovered, streamRecovered, rpcRecovered, correlatedRecoveryOperations };
   assertActorSupervisionEvidence(evidence);
   await artifacts.writeJson("actor-supervision-failpoint-evidence.json", evidence);
   await artifacts.event("actor_supervision_failpoint_complete", { ...evidence, elapsedMs: Math.round(performance.now() - startedAt) });
@@ -111,6 +125,12 @@ export function recoveryCanaryNamespace(namespace: string, domain: string): stri
 }
 
 async function injectAndRestart(domain: "notice" | "queue" | "kv" | "lease" | "schedule" | "stream" | "rpc" | "all-domain", stack: ComposeStack, config: RunConfig): Promise<void> {
+  await injectAndWaitForReadinessWithdrawal(domain, config);
+  await stack.stopFitz();
+  await stack.restartFitz();
+}
+
+async function injectAndWaitForReadinessWithdrawal(domain: "notice" | "queue" | "kv" | "lease" | "schedule" | "stream" | "rpc" | "all-domain", config: RunConfig): Promise<void> {
   const response = await fetch(`http://127.0.0.1:${config.port}/destroyer/failpoints/${domain}-actor-panic`, {
     method: "POST",
     signal: AbortSignal.timeout(config.requestTimeoutMs),
@@ -119,8 +139,6 @@ async function injectAndRestart(domain: "notice" | "queue" | "kv" | "lease" | "s
   const injected = (await response.json() as { injected?: unknown }).injected === true;
   if (!injected) throw new Error(`${domain} actor failpoint did not confirm injection`);
   if (!await waitForReadinessWithdrawal(config.port, config.requestTimeoutMs)) throw new Error(`${domain} actor panic did not withdraw readiness`);
-  await stack.stopFitz();
-  await stack.restartFitz();
 }
 
 function onlyLog(logs: ReadonlyMap<string, string>): string {

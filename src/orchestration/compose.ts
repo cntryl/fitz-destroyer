@@ -28,6 +28,7 @@ import {
   isPressureQuiescent,
   loopbackPortUrl,
   parseDockerMemoryUsage,
+  parseWindowErrors,
   parseWindowSuccesses,
   prometheusMetric,
   sleep,
@@ -605,6 +606,30 @@ export class ComposeStack {
       await sleep(1_000);
     }
     throw new Error(`Timed out waiting for fresh client success in every domain: ${lastStatus}`);
+  }
+
+  async waitForAllClientErrors(since: Date, replicas: number): Promise<number> {
+    const deadline = Date.now() + this.#config.requestTimeoutMs;
+    while (Date.now() < deadline) {
+      const containers = await this.serviceContainers("client", true);
+      if (containers.length === replicas) {
+        let totalErrors = 0;
+        let clientsWithErrors = 0;
+        for (const container of containers) {
+          const logs = await runCommand(
+            "docker",
+            ["logs", "--since", since.toISOString(), container],
+            { cwd: this.#config.rootDir, allowFailure: true },
+          );
+          const errors = parseWindowErrors(`${logs.stdout}\n${logs.stderr}`);
+          totalErrors += errors;
+          if (errors > 0) clientsWithErrors += 1;
+        }
+        if (clientsWithErrors === replicas) return totalErrors;
+      }
+      await sleep(250);
+    }
+    throw new Error(`Timed out waiting for all ${replicas} active-fault clients to report a completed error`);
   }
 
   private async bombardTotalsSince(since: Date, replicas: number): Promise<BombardTotals> {

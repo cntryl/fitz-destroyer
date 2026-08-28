@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assertActorSupervisionEvidence, recoveryCanaryNamespace } from "../src/orchestration/actor-supervision-failpoint.js";
+import { parseWindowErrors } from "../src/orchestration/compose-evidence.js";
 
 test("should_require_fail_closed_actor_supervision_and_restart_recovery", () => {
   // Arrange
-  const evidence = { domainsInjected: 7, correlatedDomainsInjected: 7, readinessWithdrawals: 8, restartsRecovered: 8, canaryDeliveries: 4, expectedCanaryDeliveries: 4, queueRecovered: 1, expectedQueueRecovered: 1, kvRecovered: 1, leaseRecovered: 1, scheduleRecovered: 1, streamRecovered: 1, rpcRecovered: 1, correlatedRecoveryOperations: 7 };
+  const evidence = { domainsInjected: 7, correlatedDomainsInjected: 7, activeFaultClients: 4, expectedActiveFaultClients: 4, activeFaultErrors: 4, readinessWithdrawals: 8, restartsRecovered: 8, canaryDeliveries: 4, expectedCanaryDeliveries: 4, queueRecovered: 1, expectedQueueRecovered: 1, kvRecovered: 1, leaseRecovered: 1, scheduleRecovered: 1, streamRecovered: 1, rpcRecovered: 1, correlatedRecoveryOperations: 7 };
 
   // Act
   // Assert
@@ -19,6 +20,24 @@ test("should_require_fail_closed_actor_supervision_and_restart_recovery", () => 
   assert.throws(() => assertActorSupervisionEvidence({ ...evidence, rpcRecovered: 0 }), /RPC recovery/u);
   assert.throws(() => assertActorSupervisionEvidence({ ...evidence, correlatedDomainsInjected: 6 }), /correlated actor failpoint/u);
   assert.throws(() => assertActorSupervisionEvidence({ ...evidence, correlatedRecoveryOperations: 6 }), /Correlated recovery/u);
+  assert.throws(() => assertActorSupervisionEvidence({ ...evidence, activeFaultClients: 3 }), /Active-fault clients/u);
+  assert.throws(() => assertActorSupervisionEvidence({ ...evidence, activeFaultErrors: 3 }), /Active-fault errors/u);
+});
+
+test("should_count_only_completed_fault_window_errors", () => {
+  // Arrange
+  const log = [
+    "npm prelude",
+    JSON.stringify({ event: "progress", window: { queue: { success: 1, error: 2 }, rpc: { success: 0, error: 1 } } }),
+    JSON.stringify({ event: "progress", window: { kv: { success: 0, error: 3 } } }),
+    JSON.stringify({ event: "other", window: { queue: { error: 99 } } }),
+  ].join("\n");
+
+  // Act
+  const errors = parseWindowErrors(log);
+
+  // Assert
+  assert.equal(errors, 6);
 });
 
 test("should_isolate_each_post_restart_canary_route_namespace", () => {

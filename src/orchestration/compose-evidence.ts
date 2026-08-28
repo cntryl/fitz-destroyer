@@ -4,7 +4,7 @@ import { ALL_DOMAINS, type Domain } from "../workloads/model.js";
 
 type ProgressRecord = {
   event?: string;
-  window?: Partial<Record<Domain, { success?: number }>>;
+  window?: Partial<Record<Domain, { success?: number; error?: number }>>;
 };
 
 export type BombardTotals = Record<Domain, { success: number; error: number }>;
@@ -73,6 +73,22 @@ export function parseWindowSuccesses(logs: string): Record<Domain, number> {
     }
   }
   return successes;
+}
+
+export function parseWindowErrors(logs: string): number {
+  let errors = 0;
+  for (const line of logs.split("\n")) {
+    const jsonStart = line.indexOf("{");
+    if (jsonStart < 0) continue;
+    try {
+      const record = JSON.parse(line.slice(jsonStart)) as ProgressRecord;
+      if (record.event !== "progress" || record.window === undefined) continue;
+      for (const domain of ALL_DOMAINS) errors += record.window[domain]?.error ?? 0;
+    } catch {
+      // npm prelude and Docker diagnostics are not workload progress records.
+    }
+  }
+  return errors;
 }
 
 export function emptyBombardTotals(): BombardTotals {
