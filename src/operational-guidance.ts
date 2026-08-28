@@ -832,6 +832,7 @@ function fallbackScenarioDuration(scenario: ConcreteScenario, events: readonly E
     "wildcard-registration-quota-reclamation": "wildcard_registration_quota_reclamation_complete",
     "stream-selector-cursor-conformance": "stream_selector_cursor_conformance_complete",
     "same-shard-family-fairness": "same_shard_family_fairness_complete",
+    "actor-supervision-failpoint": "actor_supervision_failpoint_complete",
     chaos: "chaos_complete",
     "domain-pressure": "pressure_complete",
     soak: "pressure_complete",

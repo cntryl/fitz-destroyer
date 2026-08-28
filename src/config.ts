@@ -54,6 +54,7 @@ export type ScenarioName =
   | "wildcard-registration-quota-reclamation"
   | "stream-selector-cursor-conformance"
   | "same-shard-family-fairness"
+  | "actor-supervision-failpoint"
   | "all";
 export type ScaleName = "smoke" | "standard" | "large";
 export type ClientProfile = "end-to-end" | "broker-isolation";
@@ -413,6 +414,7 @@ function isScenarioName(value: string | undefined): value is ScenarioName {
     value === "wildcard-registration-quota-reclamation" ||
     value === "stream-selector-cursor-conformance" ||
     value === "same-shard-family-fairness" ||
+    value === "actor-supervision-failpoint" ||
     value === "all"
   );
 }

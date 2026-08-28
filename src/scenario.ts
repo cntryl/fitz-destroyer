@@ -45,6 +45,7 @@ import { runShutdownReconnectCleanupStormScenario } from "./orchestration/shutdo
 import { runControlLaneCleanupUnderSaturationScenario } from "./orchestration/control-lane-cleanup-under-saturation.js";
 import { runRouteFamilyIsolationMatrixScenario } from "./orchestration/route-family-isolation-matrix.js";
 import { runSameShardFamilyFairnessScenario } from "./orchestration/same-shard-family-fairness.js";
+import { runActorSupervisionFailpointScenario } from "./orchestration/actor-supervision-failpoint.js";
 import { runRpcResponseStateConformanceScenario } from "./orchestration/rpc-response-state-conformance.js";
 import { runResponseEnvelopeBoundariesScenario } from "./orchestration/response-envelope-boundaries.js";
 import { runLeaseWaiterDisconnectRacesScenario } from "./orchestration/lease-waiter-disconnect-races.js";
@@ -344,6 +345,8 @@ async function executeWorkload(
     await runStreamSelectorCursorConformanceScenario(stack, config, shape, artifacts);
   } else if (scenario === "same-shard-family-fairness") {
     await runSameShardFamilyFairnessScenario(stack, config, shape, artifacts);
+  } else if (scenario === "actor-supervision-failpoint") {
+    await runActorSupervisionFailpointScenario(stack, config, shape, artifacts);
   } else {
     throw new Error(`Scenario ${scenario} is not implemented`);
   }

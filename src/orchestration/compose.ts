@@ -91,6 +91,7 @@ export class ComposeStack {
       DESTROYER_ASYNC_HANDLER_CONCURRENCY: String(clientHandlerConcurrency(config)),
       DESTROYER_PROGRESS_INTERVAL_MS: String(config.sampleMs),
       DESTROYER_REQUEST_TIMEOUT_MS: String(config.requestTimeoutMs),
+      ...(config.scenario === "actor-supervision-failpoint" ? { FITZ_DESTROYER_FAILPOINTS: "enabled" } : {}),
       ...(config.scenario === "authorization-isolation" ||
         config.scenario === "connect-pipeline-family-rebind" ||
         config.scenario === "route-family-isolation-matrix" ||

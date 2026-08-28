@@ -56,6 +56,7 @@ export const ALL_SCENARIOS: readonly ConcreteScenario[] = [
   "wildcard-registration-quota-reclamation",
   "stream-selector-cursor-conformance",
   "same-shard-family-fairness",
+  "actor-supervision-failpoint",
 ];
 
 export type SuiteSummary = {

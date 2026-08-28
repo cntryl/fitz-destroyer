@@ -151,6 +151,7 @@ test("should_accept_wire_and_lifecycle_wobble_scenarios", () => {
     "wildcard-registration-quota-reclamation",
     "stream-selector-cursor-conformance",
     "same-shard-family-fairness",
+    "actor-supervision-failpoint",
   ];
 
   // Act

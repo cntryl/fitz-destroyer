@@ -134,6 +134,10 @@ const CONFIGS: Partial<Record<ConcreteScenario, CompletionConfig>> = {
     event: "same_shard_family_fairness_complete",
     fields: [["noisyCompleted", "Noisy-family operations"], ["canariesAttempted", "Sibling canaries attempted"], ["canariesCompleted", "Sibling canaries completed"], ["canaryErrors", "Sibling canary errors"]],
   },
+  "actor-supervision-failpoint": {
+    event: "actor_supervision_failpoint_complete",
+    fields: [["canaryDeliveries", "Post-restart Notice deliveries"], ["expectedCanaryDeliveries", "Expected post-restart deliveries"]],
+  },
 };
 
 export function completionMetricsForScenario(

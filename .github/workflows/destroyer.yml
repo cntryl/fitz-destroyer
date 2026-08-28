@@ -110,6 +110,7 @@ jobs:
           - wildcard-registration-quota-reclamation
           - stream-selector-cursor-conformance
           - same-shard-family-fairness
+          - actor-supervision-failpoint
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7
