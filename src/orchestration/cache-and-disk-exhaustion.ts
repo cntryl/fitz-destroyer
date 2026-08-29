@@ -11,15 +11,20 @@ export async function runCacheAndDiskExhaustionScenario(
   artifacts: Artifacts,
 ): Promise<void> {
   const startedAt = performance.now();
-  await stack.runRecoveryJob("load", shape);
   const results: Array<{ target: "cache" | "storage"; bytesFilled: number }> = [];
   let verifiedRecoveries = 0;
 
   try {
     for (const target of ["cache", "storage"] as const) {
+      const phaseShape = exhaustionPhaseShape(shape, target);
+      await stack.runRecoveryJob("load", phaseShape);
       const bytesFilled = await stack.runDiskFiller(target, "fill");
       try {
-        const probeShape = { ...shape, namespace: `${shape.namespace}-${target}`, entriesPerResource: 1 };
+        const probeShape = {
+          ...phaseShape,
+          namespace: `${phaseShape.namespace}-probe`,
+          entriesPerResource: 1,
+        };
         const probes = await stack.startRoleContainers("exhaustion-probe", 1, probeShape, {
           DESTROYER_REQUEST_TIMEOUT_MS: "1500",
         });
@@ -35,7 +40,7 @@ export async function runCacheAndDiskExhaustionScenario(
 
       if (target === "cache") await stack.recycleFitzAfterFault();
       else await stack.recycleStorageAfterFault();
-      await stack.runRecoveryJob("verify", shape).catch((error: unknown) => {
+      await stack.runRecoveryJob("verify", phaseShape).catch((error: unknown) => {
         throw new Error(`Acknowledged baseline did not recover after ${target} exhaustion: ${errorMessage(error)}`);
       });
       verifiedRecoveries += 1;
@@ -46,6 +51,13 @@ export async function runCacheAndDiskExhaustionScenario(
   }
 
   await emitCompletion(artifacts, startedAt, results, verifiedRecoveries, shape, "passed");
+}
+
+export function exhaustionPhaseShape(
+  shape: WorkloadShape,
+  target: "cache" | "storage",
+): WorkloadShape {
+  return { ...shape, namespace: `${shape.namespace}-${target}` };
 }
 
 async function emitCompletion(

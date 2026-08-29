@@ -10,6 +10,20 @@ type ComposeRunner = (
   options?: { stream?: boolean; allowFailure?: boolean; ignoreOrphans?: boolean },
 ) => Promise<CommandResult>;
 
+interface StorageFaultRecoveryOperations {
+  stopFitz: () => Promise<void>;
+  restartStorage: () => Promise<void>;
+  startFitz: () => Promise<void>;
+}
+
+export async function executeStorageFaultRecovery(
+  operations: StorageFaultRecoveryOperations,
+): Promise<void> {
+  await operations.stopFitz();
+  await operations.restartStorage();
+  await operations.startFitz();
+}
+
 export async function executeRecoveryJob(
   compose: ComposeRunner,
   artifacts: Artifacts,

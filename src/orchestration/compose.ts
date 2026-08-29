@@ -41,7 +41,11 @@ import {
   type RoleContainer,
   roleContainerName,
 } from "./compose-model.js";
-import { executeDiskFiller, executeRecoveryJob } from "./compose-jobs.js";
+import {
+  executeDiskFiller,
+  executeRecoveryJob,
+  executeStorageFaultRecovery,
+} from "./compose-jobs.js";
 import { executeUpgradeReplacement } from "./compose-upgrade.js";
 
 export type { LiveRole, RoleContainer } from "./compose-model.js";
@@ -478,11 +482,21 @@ export class ComposeStack {
   }
 
   async recycleStorageAfterFault(): Promise<void> {
-    await this.killAndRemoveService("sqrzl", "sqrzl-after-exhaustion", true);
-    await this.compose(["up", "-d", "--no-deps", "sqrzl"], { stream: true });
-    await this.killAndRemoveService("fitz", "fitz-after-storage-exhaustion", true);
-    await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
-    await this.waitReady();
+    await executeStorageFaultRecovery({
+      stopFitz: () => this.killAndRemoveService(
+        "fitz",
+        "fitz-after-storage-exhaustion",
+        true,
+      ),
+      restartStorage: async () => {
+        await this.killAndRemoveService("sqrzl", "sqrzl-after-exhaustion", true);
+        await this.compose(["up", "-d", "--no-deps", "sqrzl"], { stream: true });
+      },
+      startFitz: async () => {
+        await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
+        await this.waitReady();
+      },
+    });
   }
 
   async runDiskFiller(target: "cache" | "storage", action: "fill" | "remove"): Promise<number> {
