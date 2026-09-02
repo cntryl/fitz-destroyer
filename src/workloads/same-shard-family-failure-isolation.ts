@@ -1,5 +1,10 @@
 import { createClient, type Client } from "@cntryl/fitz";
 import { createDestroyerToken } from "../auth-token.js";
+import {
+  DESTROYER_FAMILY_ACTOR_SHARD_COUNT,
+  DESTROYER_PRIMARY_FAMILY,
+  DESTROYER_SAME_SHARD_FAMILY,
+} from "../family-shard-topology.js";
 import type { LiveCommonOptions, LiveLog } from "./live.js";
 
 export type SameShardFamilyFailureOptions = LiveCommonOptions & {
@@ -7,9 +12,9 @@ export type SameShardFamilyFailureOptions = LiveCommonOptions & {
   failpointUrl: string;
 };
 
-const SHARD_COUNT = 8;
-const FAILED_FAMILY = 1;
-const SIBLING_FAMILY = 9;
+const SHARD_COUNT = DESTROYER_FAMILY_ACTOR_SHARD_COUNT;
+const FAILED_FAMILY = DESTROYER_PRIMARY_FAMILY;
+const SIBLING_FAMILY = DESTROYER_SAME_SHARD_FAMILY;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 

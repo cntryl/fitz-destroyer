@@ -163,9 +163,9 @@ scales raise the due set to at least 2,000 and 5,000 definitions respectively.
 family-actor shard, continuously fills one family's Notice lane, and requires
 every sibling-family delivery canary to complete within the request timeout.
 
-`same-shard-family-failure-isolation` pins authenticated families 1 and 9 to
-the same one of eight family-actor shards, then panics family 1's Stream and RPC
-actors. The failed family must reject, family 9 must keep progressing without
+`same-shard-family-failure-isolation` pins authenticated families 1 and 5 to
+the same one of four family-actor shards, then panics family 1's Stream and RPC
+actors. The failed family must reject, family 5 must keep progressing without
 cross-family delivery, and broker readiness must remain healthy.
 
 `family-actor-exhaustion-readiness` fails the two provisioned Stream families

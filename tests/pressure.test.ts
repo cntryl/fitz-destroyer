@@ -17,9 +17,12 @@ import {
   prometheusMetric,
 } from "../src/orchestration/compose-evidence.js";
 import {
+  isPressureStreamCleanupPending,
+  nextPressureStreamOffset,
   pressureKvWrite,
   pressureScheduleRoute,
   pressureStreamWrite,
+  replaceAndReconcilePressureStreamClient,
 } from "../src/workloads/pressure.js";
 import {
   analyzePressureLogs,
@@ -28,8 +31,8 @@ import {
 } from "../src/orchestration/pressure.js";
 
 test("should_keep_sustained_pressure_durable_identities_bounded", () => {
-  const firstStream = pressureStreamWrite("run", "worker", 0);
-  const laterStream = pressureStreamWrite("run", "worker", 42);
+  const firstStream = pressureStreamWrite("run", "worker", 0n);
+  const laterStream = pressureStreamWrite("run", "worker", 42n);
   const firstKv = pressureKvWrite("run", "worker", 0);
   const laterKv = pressureKvWrite("run", "worker", 42);
 
@@ -39,6 +42,46 @@ test("should_keep_sustained_pressure_durable_identities_bounded", () => {
   assert.equal(firstStream.expectedOffset, 0n);
   assert.equal(laterStream.expectedOffset, 42n);
   assert.equal(pressureScheduleRoute("run", "worker"), pressureScheduleRoute("run", "worker"));
+});
+
+test("should_resume_stream_pressure_after_the_latest_committed_offset", () => {
+  assert.equal(nextPressureStreamOffset(undefined), 0n);
+  assert.equal(nextPressureStreamOffset(41n), 42n);
+});
+
+test("should_retry_stream_pressure_while_the_previous_session_is_cleaning_up", () => {
+  assert.equal(isPressureStreamCleanupPending({ domainCode: 2_002 }), true);
+  assert.equal(isPressureStreamCleanupPending({ domainCode: 2_003 }), false);
+});
+
+test("should_replace_the_stream_connection_before_reconciling_its_offset", async () => {
+  const calls: string[] = [];
+  const current = {
+    close: async () => {
+      calls.push("close-current");
+    },
+  };
+  const replacement = {
+    close: async () => {
+      calls.push("close-replacement");
+    },
+  };
+
+  const result = await replaceAndReconcilePressureStreamClient(
+    current,
+    async () => {
+      calls.push("connect-replacement");
+      return replacement;
+    },
+    async () => {
+      calls.push("peek-replacement");
+      return 41n;
+    },
+  );
+
+  assert.equal(result.client, replacement);
+  assert.equal(result.nextOffset, 42n);
+  assert.deepEqual(calls, ["close-current", "connect-replacement", "peek-replacement"]);
 });
 
 test("should_summarize_latency_percentiles_from_bounded_histograms", () => {
@@ -206,6 +249,33 @@ test("should_defer_ambiguous_queue_outcomes_to_exact_reconciliation", () => {
   assert.deepEqual(pressureUnexpectedErrors(clients, ["queue"]), []);
   clients[0]!.domains.queue.stages.enqueue.failed = 1;
   assert.deepEqual(pressureUnexpectedErrors(clients, ["queue"]), ["worker-a/queue=1"]);
+});
+
+test("should_accept_only_reconciled_ambiguous_stream_outcomes", () => {
+  const metrics = createStageMetrics();
+  metrics.ambiguous = 1;
+  metrics.errorClasses.timeout = 1;
+  const clients = [{
+    container: "container-a",
+    worker: "worker-a",
+    domains: {
+      stream: {
+        succeeded: 4,
+        failed: 1,
+        stages: {
+          append: {
+            ...metrics,
+            latencyHistogram: metrics.latency,
+            latency: latencySummary(metrics.latency),
+          },
+        },
+      },
+    },
+  }];
+
+  assert.deepEqual(pressureUnexpectedErrors(clients, ["stream"]), []);
+  clients[0]!.domains.stream.stages.append.failed = 1;
+  assert.deepEqual(pressureUnexpectedErrors(clients, ["stream"]), ["worker-a/stream=1"]);
 });
 
 test("should_classify_expected_worker_shutdown_signals_as_cancelled", () => {

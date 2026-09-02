@@ -2,6 +2,8 @@ import type { Client } from "@cntryl/fitz";
 import type { LiveLog } from "./live.js";
 import type { Domain } from "./model.js";
 
+const STREAM_SESSION_ALREADY_ACTIVE = 2_002;
+
 export function pressureValue(
   namespace: string,
   worker: string,
@@ -27,12 +29,40 @@ export function pressureKvWrite(
 export function pressureStreamWrite(
   namespace: string,
   worker: string,
-  counter: number,
+  expectedOffset: bigint,
 ): { route: string; expectedOffset: bigint } {
   return {
     route: `stream://destroyer/${namespace}/${worker}-stream`,
-    expectedOffset: BigInt(counter),
+    expectedOffset,
   };
+}
+
+export function nextPressureStreamOffset(latestOffset: bigint | undefined): bigint {
+  return latestOffset === undefined ? 0n : latestOffset + 1n;
+}
+
+export function isPressureStreamCleanupPending(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "domainCode" in error &&
+    error.domainCode === STREAM_SESSION_ALREADY_ACTIVE
+  );
+}
+
+export async function replaceAndReconcilePressureStreamClient<T extends { close(): Promise<void> }>(
+  current: T,
+  connect: () => Promise<T>,
+  peekOffset: (client: T) => Promise<bigint | undefined>,
+): Promise<{ client: T; nextOffset: bigint }> {
+  await current.close().catch(() => undefined);
+  const client = await connect();
+  try {
+    return { client, nextOffset: nextPressureStreamOffset(await peekOffset(client)) };
+  } catch (error) {
+    await client.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 export function pressureScheduleRoute(namespace: string, worker: string): string {

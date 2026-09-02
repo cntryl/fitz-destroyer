@@ -1,0 +1,8 @@
+export const DESTROYER_FAMILY_ACTOR_SHARD_COUNT = 4;
+export const DESTROYER_PRIMARY_FAMILY = 1;
+export const DESTROYER_SAME_SHARD_FAMILY = DESTROYER_FAMILY_ACTOR_SHARD_COUNT + 1;
+
+export const DESTROYER_FAMILY_ACTOR_FAMILIES = Array.from(
+  { length: DESTROYER_SAME_SHARD_FAMILY },
+  (_, index) => index + 1,
+);

@@ -18,10 +18,18 @@ export async function loadRecoveryWorkload(
   shape: WorkloadShape,
 ): Promise<number> {
   await Promise.all([
-    mapResources(shape.resources, (resource) => loadQueue(client, shape, resource)),
-    mapResources(shape.resources, (resource) => loadKv(client, shape, resource)),
-    mapResources(shape.resources, (resource) => loadStream(client, shape, resource)),
-    mapResources(shape.resources, (resource) => loadSchedules(client, shape, resource)),
+    runResourceOperationsSequentially(shape.resources, (resource) =>
+      loadQueue(client, shape, resource),
+    ),
+    runResourceOperationsSequentially(shape.resources, (resource) =>
+      loadKv(client, shape, resource),
+    ),
+    runResourceOperationsSequentially(shape.resources, (resource) =>
+      loadStream(client, shape, resource),
+    ),
+    runResourceOperationsSequentially(shape.resources, (resource) =>
+      loadSchedules(client, shape, resource),
+    ),
   ]);
   return totalDurableEntries(shape);
 }
@@ -31,9 +39,15 @@ export async function verifyRecoveryWorkload(
   shape: WorkloadShape,
 ): Promise<number> {
   await Promise.all([
-    mapResources(shape.resources, (resource) => verifyQueue(client, shape, resource)),
-    mapResources(shape.resources, (resource) => verifyKv(client, shape, resource)),
-    mapResources(shape.resources, (resource) => verifyStream(client, shape, resource)),
+    runResourceOperationsSequentially(shape.resources, (resource) =>
+      verifyQueue(client, shape, resource),
+    ),
+    runResourceOperationsSequentially(shape.resources, (resource) =>
+      verifyKv(client, shape, resource),
+    ),
+    runResourceOperationsSequentially(shape.resources, (resource) =>
+      verifyStream(client, shape, resource),
+    ),
     verifySchedules(client, shape),
   ]);
   return totalDurableEntries(shape);
@@ -203,9 +217,15 @@ async function verifySchedules(client: Client, shape: WorkloadShape): Promise<vo
   }
 }
 
-async function mapResources(
+export async function runResourceOperationsSequentially(
   resources: number,
   operation: (resource: number) => Promise<void>,
 ): Promise<void> {
-  await Promise.all(Array.from({ length: resources }, (_, resource) => operation(resource)));
+  // The Fitz wire has no correlation ID for these domain operations. Its
+  // contract makes concurrent requests of the same message type on one
+  // connection undefined, so preserve one in-flight operation per domain
+  // while the four durable domains still run concurrently above.
+  for (let resource = 0; resource < resources; resource += 1) {
+    await operation(resource);
+  }
 }

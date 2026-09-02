@@ -132,21 +132,18 @@ export function classifyStorageFailure(error: string): StorageFailureLayer {
   return "admission";
 }
 
-async function runStorageFaultIteration(
+export async function runStorageFaultIteration(
   stack: ComposeStack,
   shape: WorkloadShape,
   environment: Readonly<Record<string, string>>,
   iteration: StorageFaultIteration,
+  delay: (milliseconds: number) => Promise<void> = sleep,
 ): Promise<ReadonlyMap<string, string>> {
   await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   const waitForGate = iteration.fault !== "bounded-latency" && iteration.fault !== "provider-recovery";
 
   if (iteration.fault === "bounded-latency") {
     await stack.setFaultProxy("storage-proxy", { mode: "latency", latencyMs: 250 });
-  } else if (iteration.fault === "connection-reset") {
-    await stack.setFaultProxy("storage-proxy", { mode: "reset" });
-  } else if (iteration.fault === "provider-partition" || iteration.fault === "fitz-crash-inflight") {
-    await stack.setFaultProxy("storage-proxy", { mode: "partition" });
   }
 
   const writer = await stack.startRoleContainers("durability-writer", 1, shape, {
@@ -157,15 +154,20 @@ async function runStorageFaultIteration(
   });
   if (waitForGate) {
     await stack.waitForRoleEvent(writer, "live_producer_ready");
+    if (iteration.fault === "connection-reset") {
+      await stack.setFaultProxy("storage-proxy", { mode: "reset" });
+    } else if (iteration.fault === "provider-partition" || iteration.fault === "fitz-crash-inflight") {
+      await stack.setFaultProxy("storage-proxy", { mode: "partition" });
+    }
     await stack.signalRoleContainers(writer, "SIGUSR1");
     await stack.waitForRoleEvent(writer, "durability_operations_dispatched");
   }
 
   if (iteration.fault === "connection-reset") {
-    await sleep(250);
+    await delay(250);
     await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   } else if (iteration.fault === "provider-partition") {
-    await sleep(5_000);
+    await delay(5_000);
     await stack.setFaultProxy("storage-proxy", { mode: "healthy" });
   } else if (iteration.fault === "fitz-crash-inflight") {
     await stack.killFitz();

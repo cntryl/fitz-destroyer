@@ -23,14 +23,13 @@ test("should_isolate_each_exhaustion_phase_with_its_own_durable_baseline", () =>
   });
 });
 
-test("should_stop_fitz_before_restarting_exhausted_storage", async () => {
+test("should_keep_tmpfs_storage_mounted_while_restarting_fitz", async () => {
   const calls: string[] = [];
 
   await executeStorageFaultRecovery({
     stopFitz: async () => { calls.push("stop-fitz"); },
-    restartStorage: async () => { calls.push("restart-storage"); },
     startFitz: async () => { calls.push("start-fitz"); },
   });
 
-  assert.deepEqual(calls, ["stop-fitz", "restart-storage", "start-fitz"]);
+  assert.deepEqual(calls, ["stop-fitz", "start-fitz"]);
 });

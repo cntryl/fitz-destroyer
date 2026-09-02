@@ -16,7 +16,7 @@
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
-    "@cntryl/fitz": "0.0.21"
+    "@cntryl/fitz": "0.0.22"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

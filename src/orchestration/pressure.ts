@@ -313,10 +313,10 @@ export function pressureUnexpectedErrors(
   return clients.flatMap((client) =>
     domains.flatMap((domain) => {
       const evidence = client.domains[domain];
-      // Queue enqueue/complete timeouts have an explicitly unknown durable
-      // outcome. They are correctness failures only when exact reconciliation
-      // fails; definite stage failures still fail the pressure run here.
-      const count = domain === "queue"
+      // Queue outcomes are reconciled after the run. Stream outcomes are
+      // reconciled inline against the latest committed offset. Definite stage
+      // failures still fail the pressure run here.
+      const count = domain === "queue" || domain === "stream"
         ? Object.values(evidence?.stages ?? {}).reduce(
             (total, stage) => total + stage.failed,
             0,

@@ -45,10 +45,12 @@ import {
 } from "./pressure.js";
 import {
   decodePressureQueueSequence,
+  isPressureStreamCleanupPending,
   pressureKvWrite,
   pressureScheduleRoute,
   pressureStreamWrite,
   pressureValue,
+  replaceAndReconcilePressureStreamClient,
   runPressureQueueReconciler,
 } from "./workloads/pressure.js";
 import {
@@ -720,8 +722,12 @@ async function bombard(client: Client): Promise<void> {
     ambiguousCompletions: [] as number[],
   };
   const lastErrors: Partial<Record<Domain, string>> = {};
+  let nextStreamOffset = 0n;
   const payload = (domain: Domain, counter: number): Uint8Array =>
     pressureValue(namespace, worker, domain, counter);
+  let streamClient = selectedDomains.includes("stream")
+    ? await connectedPressureClient()
+    : undefined;
 
   const rpcRoute = `rpc://destroyer/${namespace}/${worker}`;
   const rpcWorker = selectedDomains.includes("rpc")
@@ -780,21 +786,50 @@ async function bombard(client: Client): Promise<void> {
           await tx.put({ key, value, signal });
           await tx.commit({ signal });
         } catch (error) {
-          await tx.rollback({ signal }).catch(() => undefined);
+          await tx.rollback({ signal: pressureCleanupSignal() }).catch(() => undefined);
           throw error;
         }
       }, true);
     },
     stream: async (i, signal) => {
-      const { route, expectedOffset } = pressureStreamWrite(namespace, worker, i);
+      if (streamClient === undefined) throw new Error("stream pressure client is unavailable");
+      const { route, expectedOffset } = pressureStreamWrite(namespace, worker, nextStreamOffset);
       await observeStage(stages, "stream", "append", async () => {
-        const session = await client.stream.begin(route, { signal });
-        try {
-          await session.append({ expectedOffset, body: payload("stream", i), signal });
-          await session.commit({ mode: "Sync", signal });
-        } catch (error) {
-          await session.rollback({ signal }).catch(() => undefined);
-          throw error;
+        while (true) {
+          const currentStreamClient = streamClient;
+          if (currentStreamClient === undefined) {
+            throw new Error("stream pressure client is unavailable");
+          }
+          let session: Awaited<ReturnType<Client["stream"]["begin"]>> | undefined;
+          try {
+            session = await currentStreamClient.stream.begin(route, { signal });
+            await session.append({ expectedOffset, body: payload("stream", i), signal });
+            await session.commit({ mode: "Sync", signal });
+            nextStreamOffset += 1n;
+            return;
+          } catch (error) {
+            await session?.rollback({ signal: pressureCleanupSignal() }).catch(() => undefined);
+            if (shutdown.signal.aborted) throw error;
+            try {
+              const recovery = await replaceAndReconcilePressureStreamClient(
+                currentStreamClient,
+                connectedPressureClient,
+                async (replacement) =>
+                  (await replacement.stream.peek(route, {
+                    signal: pressureReconciliationSignal(),
+                  }))?.offset,
+              );
+              streamClient = recovery.client;
+              nextStreamOffset = recovery.nextOffset;
+            } catch {
+              throw pressureStreamReconciliationError();
+            }
+            if (isPressureStreamCleanupPending(error)) {
+              await new Promise<void>((resolve) => setTimeout(resolve, 50));
+              continue;
+            }
+            throw error;
+          }
         }
       }, true);
     },
@@ -855,8 +890,29 @@ async function bombard(client: Client): Promise<void> {
   } finally {
     clearInterval(progressTimer);
     if (rpcWorker !== undefined) await rpcWorker.unsubscribe().catch(() => undefined);
+    await streamClient?.close().catch(() => undefined);
     log("stopped", { worker, totals: counters, stages, queueOutcome });
   }
+}
+
+async function connectedPressureClient(): Promise<Client> {
+  const client = makeClient(true);
+  await client.connectWhenReady({ timeoutMs: Infinity, signal: shutdown.signal });
+  return client;
+}
+
+function pressureCleanupSignal(): AbortSignal {
+  return AbortSignal.timeout(Math.min(requestTimeoutMs, 2_000));
+}
+
+function pressureReconciliationSignal(): AbortSignal {
+  return AbortSignal.timeout(requestTimeoutMs);
+}
+
+function pressureStreamReconciliationError(): Error {
+  const error = new Error("stream durable outcome could not be reconciled");
+  error.name = "PressureStreamReconciliationError";
+  return error;
 }
 
 async function observeStage<T>(
