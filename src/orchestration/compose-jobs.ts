@@ -19,6 +19,7 @@ export async function executeStorageFaultRecovery(
   operations: StorageFaultRecoveryOperations,
 ): Promise<void> {
   await operations.stopFitz();
+  // Restarting Sqrzl remounts its local-driver tmpfs volume empty.
   await operations.startFitz();
 }
 

@@ -246,9 +246,10 @@ canary. Durable KV and Stream routes intentionally remain as recovery pressure.
 `cache-and-disk-exhaustion` runs on two disposable 64 MiB tmpfs-backed Compose
 volumes. A root-only helper in the isolated stack fills Fitz's cache and then
 Sqrzl's blob volume to `ENOSPC`; each synchronous probe must reject. The helper
-removes only its exact filler file, the affected services are reconstructed,
-and the acknowledged baseline must verify after both phases. No Docker socket
-is mounted and the host filesystem is never used as the fill target.
+removes only its exact filler file, then Fitz is reconstructed and the
+acknowledged baseline must verify after both phases. Sqrzl remains running so
+Docker does not remount its local-driver tmpfs volume empty. No Docker socket is
+mounted and the host filesystem is never used as the fill target.
 
 `session-boundaries` holds a Queue reservation, an uncommitted KV transaction,
 an uncommitted Stream append session, and a Lease across a Fitz `SIGKILL` and
