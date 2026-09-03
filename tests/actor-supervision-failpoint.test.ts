@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertActorSupervisionEvidence, recoveryCanaryNamespace } from "../src/orchestration/actor-supervision-failpoint.js";
+import {
+  activeFaultObservationTimeoutMs,
+  assertActorSupervisionEvidence,
+  recoveryCanaryNamespace,
+} from "../src/orchestration/actor-supervision-failpoint.js";
 import { parseWindowErrors } from "../src/orchestration/compose-evidence.js";
 
 test("should_require_fail_closed_actor_supervision_and_restart_recovery", () => {
@@ -61,4 +65,17 @@ test("should_isolate_each_post_restart_canary_route_namespace", () => {
   assert.notEqual(lease, schedule);
   assert.notEqual(schedule, stream);
   assert.notEqual(stream, rpc);
+});
+
+test("should_allow_active clients to finish an in-flight request after a correlated fault", () => {
+  // Arrange
+  const requestTimeoutMs = 10_000;
+
+  // Act
+  const hostedBudget = activeFaultObservationTimeoutMs(requestTimeoutMs, 180_000);
+  const boundedBudget = activeFaultObservationTimeoutMs(requestTimeoutMs, 20_000);
+
+  // Assert
+  assert.equal(hostedBudget, 30_000);
+  assert.equal(boundedBudget, 20_000);
 });

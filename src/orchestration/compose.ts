@@ -658,8 +658,12 @@ export class ComposeStack {
     throw new Error(`Timed out waiting for fresh client success in every domain: ${lastStatus}`);
   }
 
-  async waitForAllClientErrors(since: Date, replicas: number): Promise<number> {
-    const deadline = Date.now() + this.#config.requestTimeoutMs;
+  async waitForAllClientErrors(
+    since: Date,
+    replicas: number,
+    timeoutMs = this.#config.requestTimeoutMs,
+  ): Promise<number> {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const containers = await this.serviceContainers("client", true);
       if (containers.length === replicas) {
