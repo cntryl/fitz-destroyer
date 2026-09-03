@@ -17,19 +17,26 @@ import {
   prometheusMetric,
 } from "../src/orchestration/compose-evidence.js";
 import {
+  isPressureStreamCleanupPending,
+  isPressureQueueBackpressure,
+  nextPressureStreamOffset,
   pressureKvWrite,
+  pressureLoopDelayMs,
   pressureScheduleRoute,
   pressureStreamWrite,
+  replaceAndReconcilePressureStreamClient,
+  retryPressureQueueBackpressure,
 } from "../src/workloads/pressure.js";
 import {
   analyzePressureLogs,
   assertProgressWindows,
+  pressureVerificationCompletedAtMs,
   pressureUnexpectedErrors,
 } from "../src/orchestration/pressure.js";
 
 test("should_keep_sustained_pressure_durable_identities_bounded", () => {
-  const firstStream = pressureStreamWrite("run", "worker", 0);
-  const laterStream = pressureStreamWrite("run", "worker", 42);
+  const firstStream = pressureStreamWrite("run", "worker", 0n);
+  const laterStream = pressureStreamWrite("run", "worker", 42n);
   const firstKv = pressureKvWrite("run", "worker", 0);
   const laterKv = pressureKvWrite("run", "worker", 42);
 
@@ -39,6 +46,86 @@ test("should_keep_sustained_pressure_durable_identities_bounded", () => {
   assert.equal(firstStream.expectedOffset, 0n);
   assert.equal(laterStream.expectedOffset, 42n);
   assert.equal(pressureScheduleRoute("run", "worker"), pressureScheduleRoute("run", "worker"));
+});
+
+test("should_apply_steady_pressure_cadence_by_domain_semantics", () => {
+  assert.equal(pressureLoopDelayMs("notice"), 100);
+  for (const domain of ["lease", "rpc"] as const) {
+    assert.equal(pressureLoopDelayMs(domain), 250);
+  }
+  for (const domain of ["queue", "kv", "stream", "schedule"] as const) {
+    assert.equal(pressureLoopDelayMs(domain), 1_000);
+  }
+});
+
+test("should_retry_only_typed_queue_backpressure_with_bounded_exponential_delay", async () => {
+  const delays: number[] = [];
+  let attempts = 0;
+  const result = await retryPressureQueueBackpressure(
+    async () => {
+      attempts += 1;
+      if (attempts < 6) throw { domainCode: 4_005 };
+      return "accepted";
+    },
+    (_attempt, delayMs) => delays.push(delayMs),
+    async () => undefined,
+  );
+
+  assert.equal(result, "accepted");
+  assert.equal(attempts, 6);
+  assert.deepEqual(delays, [25, 50, 100, 200, 250]);
+  assert.equal(isPressureQueueBackpressure({ domainCode: 4_005 }), true);
+  assert.equal(isPressureQueueBackpressure({ domainCode: 5_007 }), false);
+  await assert.rejects(
+    retryPressureQueueBackpressure(
+      async () => {
+        throw new Error("definite Queue failure");
+      },
+      () => assert.fail("non-backpressure error must not retry"),
+      async () => undefined,
+    ),
+    /definite Queue failure/u,
+  );
+});
+
+test("should_resume_stream_pressure_after_the_latest_committed_offset", () => {
+  assert.equal(nextPressureStreamOffset(undefined), 0n);
+  assert.equal(nextPressureStreamOffset(41n), 42n);
+});
+
+test("should_retry_stream_pressure_while_the_previous_session_is_cleaning_up", () => {
+  assert.equal(isPressureStreamCleanupPending({ domainCode: 2_002 }), true);
+  assert.equal(isPressureStreamCleanupPending({ domainCode: 2_003 }), false);
+});
+
+test("should_replace_the_stream_connection_before_reconciling_its_offset", async () => {
+  const calls: string[] = [];
+  const current = {
+    close: async () => {
+      calls.push("close-current");
+    },
+  };
+  const replacement = {
+    close: async () => {
+      calls.push("close-replacement");
+    },
+  };
+
+  const result = await replaceAndReconcilePressureStreamClient(
+    current,
+    async () => {
+      calls.push("connect-replacement");
+      return replacement;
+    },
+    async () => {
+      calls.push("peek-replacement");
+      return 41n;
+    },
+  );
+
+  assert.equal(result.client, replacement);
+  assert.equal(result.nextOffset, 42n);
+  assert.deepEqual(calls, ["close-current", "connect-replacement", "peek-replacement"]);
 });
 
 test("should_summarize_latency_percentiles_from_bounded_histograms", () => {
@@ -208,6 +295,33 @@ test("should_defer_ambiguous_queue_outcomes_to_exact_reconciliation", () => {
   assert.deepEqual(pressureUnexpectedErrors(clients, ["queue"]), ["worker-a/queue=1"]);
 });
 
+test("should_accept_only_reconciled_ambiguous_stream_outcomes", () => {
+  const metrics = createStageMetrics();
+  metrics.ambiguous = 1;
+  metrics.errorClasses.timeout = 1;
+  const clients = [{
+    container: "container-a",
+    worker: "worker-a",
+    domains: {
+      stream: {
+        succeeded: 4,
+        failed: 1,
+        stages: {
+          append: {
+            ...metrics,
+            latencyHistogram: metrics.latency,
+            latency: latencySummary(metrics.latency),
+          },
+        },
+      },
+    },
+  }];
+
+  assert.deepEqual(pressureUnexpectedErrors(clients, ["stream"]), []);
+  clients[0]!.domains.stream.stages.append.failed = 1;
+  assert.deepEqual(pressureUnexpectedErrors(clients, ["stream"]), ["worker-a/stream=1"]);
+});
+
 test("should_classify_expected_worker_shutdown_signals_as_cancelled", () => {
   assert.equal(normalizeErrorClass(new Error("received SIGTERM")), "cancelled");
   assert.equal(normalizeErrorClass(new Error("received SIGINT")), "cancelled");
@@ -251,6 +365,25 @@ test("should_not_require_progress_in_a_trailing_partial_window", () => {
 
   assert.doesNotThrow(() =>
     assertProgressWindows(new Map([["client", records]]), ["queue", "rpc"], start, end),
+  );
+});
+
+test("should_not_extend_progress_windows_when_broker_sampling_overruns", () => {
+  const records = [
+    progress("2026-08-25T12:00:05.000Z", 1, 1),
+    progress("2026-08-25T12:00:15.000Z", 1, 1),
+  ].join("\n");
+  const start = Date.parse("2026-08-25T12:00:00.000Z");
+  const requestedDurationMs = 20_000;
+  const samplingCompletedAt = Date.parse("2026-08-25T12:00:50.000Z");
+
+  assert.doesNotThrow(() =>
+    assertProgressWindows(
+      new Map([["client", records]]),
+      ["queue", "rpc"],
+      start,
+      pressureVerificationCompletedAtMs(start, samplingCompletedAt, requestedDurationMs),
+    ),
   );
 });
 

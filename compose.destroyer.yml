@@ -27,6 +27,7 @@ services:
       - "127.0.0.1::9100"
 
   fitz:
+    cpus: "${FITZ_CPU_LIMIT:-0}"
     image: "${FITZ_IMAGE:-ghcr.io/cntryl/fitz:latest}"
     restart: "no"
     stop_grace_period: 15s
@@ -50,6 +51,7 @@ services:
       FITZ_METRICS_BIND_ADDR: 0.0.0.0
       FITZ_METRICS_PORT: "9090"
       FITZ_DRAIN_GRACE_SECONDS: "1"
+      FITZ_DESTROYER_FAILPOINTS: "${FITZ_DESTROYER_FAILPOINTS:-disabled}"
       FITZ_STORAGE_MODE: cloud
       FITZ_STORAGE_PROVIDER: sqrzl-s3
       FITZ_STORAGE_ENDPOINT: http://storage-proxy:9000

@@ -26,6 +26,7 @@ export type StageMetrics = {
   succeeded: number;
   failed: number;
   ambiguous: number;
+  retryableBackpressure: number;
   expectedShutdownCancellations: {
     failed: number;
     ambiguous: number;
@@ -105,6 +106,7 @@ export function createStageMetrics(): MutableStageMetrics {
     succeeded: 0,
     failed: 0,
     ambiguous: 0,
+    retryableBackpressure: 0,
     expectedShutdownCancellations: { failed: 0, ambiguous: 0 },
     latency: {
       count: 0,

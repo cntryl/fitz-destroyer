@@ -1,6 +1,12 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import type { RunConfig } from "../config.js";
+import {
+  DESTROYER_FAMILY_ACTOR_FAMILIES,
+  DESTROYER_FAMILY_ACTOR_SHARD_COUNT,
+  DESTROYER_PRIMARY_FAMILY,
+  DESTROYER_SAME_SHARD_FAMILY,
+} from "../family-shard-topology.js";
 import { type Domain, type WorkloadShape } from "../workloads/model.js";
 import { Artifacts } from "./artifacts.js";
 import { runCommand, type CommandResult } from "./command.js";
@@ -78,6 +84,8 @@ export class ComposeStack {
   #jobSequence = 0;
   #roleSequence = 0;
   #metricsUrl: string | undefined;
+  #pressureRssBytes: number | undefined;
+  #pressureRssSampledAt = 0;
 
   constructor(
     config: RunConfig,
@@ -121,10 +129,7 @@ export class ComposeStack {
             FITZ_ASSUME_EXTERNAL_TLS: "true",
             FITZ_JWT_HMAC_SECRET: "fitz-destroyer-local-auth-only",
             FITZ_JWT_AUDIENCES: "fitz-destroyer",
-            FITZ_ROUTE_FAMILIES: config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-inflight-concurrent-failure" ? "1,2,3,4,5,6,7,8,9" : "1,2",
-            FITZ_ROUTE_FAMILY_MAP: config.scenario === "family-actor-inflight-concurrent-failure" ? "identity-a=1,identity-b=2,identity-c=9" : config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" ? "identity-a=1,identity-b=9" : "identity-a=1,identity-b=2",
-            FITZ_ROUTE_FAMILY_CLAIM: "tid",
-            ...(config.scenario === "same-shard-family-fairness" || config.scenario === "same-shard-family-failure-isolation" || config.scenario === "family-actor-inflight-concurrent-failure" ? { FITZ_CPU_LIMIT: "8" } : {}),
+            ...authenticatedRouteFamilyEnvironment(config.scenario),
           }
         : {}),
     };
@@ -366,20 +371,12 @@ export class ComposeStack {
     if (containers.length !== 1 || container === undefined) {
       throw new Error(`Expected one running Fitz container for pressure snapshot, found ${containers.length}`);
     }
-    const [queue, rpc, prometheus, stats] = await Promise.all([
+    const [queue, rpc, prometheus, rssBytes] = await Promise.all([
       this.fetchJson("/api/v1/all/queue/stats"),
       this.fetchJson("/api/v1/all/rpc/stats"),
       this.fetchTextAt(`${metricsUrl}/metrics`, "Prometheus /metrics"),
-      runCommand(
-        "docker",
-        ["stats", "--no-stream", "--format", "{{json .}}", container],
-        { cwd: this.#config.rootDir },
-      ),
+      this.pressureRss(container),
     ]);
-    const record = JSON.parse(stats.stdout.trim()) as { MemUsage?: unknown };
-    if (typeof record.MemUsage !== "string") {
-      throw new Error(`Docker stats omitted Fitz MemUsage: ${stats.stdout.trim()}`);
-    }
     return {
       timestamp: new Date().toISOString(),
       queue,
@@ -418,8 +415,27 @@ export class ComposeStack {
           "fitz_router_high_lane_backpressure_total",
         ),
       },
-      rssBytes: parseDockerMemoryUsage(record.MemUsage),
+      rssBytes,
     };
+  }
+
+  private async pressureRss(container: string): Promise<number> {
+    const now = Date.now();
+    if (this.#pressureRssBytes !== undefined && now - this.#pressureRssSampledAt < 10_000) {
+      return this.#pressureRssBytes;
+    }
+    const stats = await runCommand(
+      "docker",
+      ["stats", "--no-stream", "--format", "{{json .}}", container],
+      { cwd: this.#config.rootDir },
+    );
+    const record = JSON.parse(stats.stdout.trim()) as { MemUsage?: unknown };
+    if (typeof record.MemUsage !== "string") {
+      throw new Error(`Docker stats omitted Fitz MemUsage: ${stats.stdout.trim()}`);
+    }
+    this.#pressureRssBytes = parseDockerMemoryUsage(record.MemUsage);
+    this.#pressureRssSampledAt = now;
+    return this.#pressureRssBytes;
   }
 
   async prometheusMetricValue(name: string): Promise<number> {
@@ -488,10 +504,6 @@ export class ComposeStack {
         "fitz-after-storage-exhaustion",
         true,
       ),
-      restartStorage: async () => {
-        await this.killAndRemoveService("sqrzl", "sqrzl-after-exhaustion", true);
-        await this.compose(["up", "-d", "--no-deps", "sqrzl"], { stream: true });
-      },
       startFitz: async () => {
         await this.compose(["up", "-d", "--no-deps", "--no-build", "fitz"], { stream: true });
         await this.waitReady();
@@ -646,8 +658,12 @@ export class ComposeStack {
     throw new Error(`Timed out waiting for fresh client success in every domain: ${lastStatus}`);
   }
 
-  async waitForAllClientErrors(since: Date, replicas: number): Promise<number> {
-    const deadline = Date.now() + this.#config.requestTimeoutMs;
+  async waitForAllClientErrors(
+    since: Date,
+    replicas: number,
+    timeoutMs = this.#config.requestTimeoutMs,
+  ): Promise<number> {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const containers = await this.serviceContainers("client", true);
       if (containers.length === replicas) {
@@ -1068,4 +1084,30 @@ export class ComposeStack {
       },
     );
   }
+}
+
+function authenticatedRouteFamilyEnvironment(
+  scenario: RunConfig["scenario"],
+): Readonly<Record<string, string>> {
+  if (scenario === "family-actor-inflight-concurrent-failure") {
+    return {
+      FITZ_ROUTE_FAMILIES: DESTROYER_FAMILY_ACTOR_FAMILIES.join(","),
+      FITZ_ROUTE_FAMILY_MAP: `identity-a=${DESTROYER_PRIMARY_FAMILY},identity-b=2,identity-c=${DESTROYER_SAME_SHARD_FAMILY}`,
+      FITZ_ROUTE_FAMILY_CLAIM: "tid",
+      FITZ_CPU_LIMIT: String(DESTROYER_FAMILY_ACTOR_SHARD_COUNT),
+    };
+  }
+  if (scenario === "same-shard-family-fairness" || scenario === "same-shard-family-failure-isolation") {
+    return {
+      FITZ_ROUTE_FAMILIES: DESTROYER_FAMILY_ACTOR_FAMILIES.join(","),
+      FITZ_ROUTE_FAMILY_MAP: `identity-a=${DESTROYER_PRIMARY_FAMILY},identity-b=${DESTROYER_SAME_SHARD_FAMILY}`,
+      FITZ_ROUTE_FAMILY_CLAIM: "tid",
+      FITZ_CPU_LIMIT: String(DESTROYER_FAMILY_ACTOR_SHARD_COUNT),
+    };
+  }
+  return {
+    FITZ_ROUTE_FAMILIES: "1,2",
+    FITZ_ROUTE_FAMILY_MAP: "identity-a=1,identity-b=2",
+    FITZ_ROUTE_FAMILY_CLAIM: "tid",
+  };
 }

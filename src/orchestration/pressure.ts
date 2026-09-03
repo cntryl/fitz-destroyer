@@ -125,11 +125,16 @@ export async function runPressureScenario(
   }
 
   try {
+    const verificationCompletedAt = pressureVerificationCompletedAtMs(
+      pressureStartedAt.getTime(),
+      pressureCompletedAt.getTime(),
+      requestedDurationMs,
+    );
     assertProgressWindows(
       clientLogs,
       config.bombardDomains,
       pressureStartedAt.getTime(),
-      pressureCompletedAt.getTime(),
+      verificationCompletedAt,
     );
   } catch (error) {
     assertionFailures.push(errorMessage(error));
@@ -284,6 +289,14 @@ export function assertProgressWindows(
   }
 }
 
+export function pressureVerificationCompletedAtMs(
+  startedAtMs: number,
+  completedAtMs: number,
+  requestedDurationMs: number,
+): number {
+  return Math.min(completedAtMs, startedAtMs + requestedDurationMs);
+}
+
 async function samplePressure(
   stack: ComposeStack,
   artifacts: Artifacts,
@@ -313,10 +326,10 @@ export function pressureUnexpectedErrors(
   return clients.flatMap((client) =>
     domains.flatMap((domain) => {
       const evidence = client.domains[domain];
-      // Queue enqueue/complete timeouts have an explicitly unknown durable
-      // outcome. They are correctness failures only when exact reconciliation
-      // fails; definite stage failures still fail the pressure run here.
-      const count = domain === "queue"
+      // Queue outcomes are reconciled after the run. Stream outcomes are
+      // reconciled inline against the latest committed offset. Definite stage
+      // failures still fail the pressure run here.
+      const count = domain === "queue" || domain === "stream"
         ? Object.values(evidence?.stages ?? {}).reduce(
             (total, stage) => total + stage.failed,
             0,
@@ -432,6 +445,9 @@ function parseStage(value: unknown, label: string): EvidenceStage {
     succeeded: numericValue(record.succeeded, `${label}.succeeded`),
     failed: numericValue(record.failed, `${label}.failed`),
     ambiguous: numericValue(record.ambiguous, `${label}.ambiguous`),
+    retryableBackpressure: record.retryableBackpressure === undefined
+      ? 0
+      : numericValue(record.retryableBackpressure, `${label}.retryableBackpressure`),
     expectedShutdownCancellations: {
       failed: numericValue(shutdownCancellations.failed, `${label} shutdown cancellation failures`),
       ambiguous: numericValue(shutdownCancellations.ambiguous, `${label} ambiguous shutdown cancellations`),
@@ -486,6 +502,7 @@ function emptyEvidenceStage(): EvidenceStage {
     succeeded: 0,
     failed: 0,
     ambiguous: 0,
+    retryableBackpressure: 0,
     expectedShutdownCancellations: { failed: 0, ambiguous: 0 },
     latencyHistogram,
     latency: latencySummary(latencyHistogram),
@@ -499,6 +516,7 @@ function mergeStage(target: EvidenceStage, source: EvidenceStage): void {
   target.succeeded += source.succeeded;
   target.failed += source.failed;
   target.ambiguous += source.ambiguous;
+  target.retryableBackpressure += source.retryableBackpressure;
   target.expectedShutdownCancellations.failed += source.expectedShutdownCancellations.failed;
   target.expectedShutdownCancellations.ambiguous += source.expectedShutdownCancellations.ambiguous;
   target.latencyHistogram = mergeLatencyHistograms([

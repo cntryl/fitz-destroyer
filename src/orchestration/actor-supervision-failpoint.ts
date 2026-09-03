@@ -24,6 +24,13 @@ export function assertActorSupervisionEvidence(record: Readonly<Record<string, u
   }
 }
 
+export function activeFaultObservationTimeoutMs(
+  requestTimeoutMs: number,
+  startupTimeoutMs: number,
+): number {
+  return Math.min(startupTimeoutMs, requestTimeoutMs * 3);
+}
+
 export async function runActorSupervisionFailpointScenario(stack: ComposeStack, config: RunConfig, shape: WorkloadShape, artifacts: Artifacts): Promise<void> {
   const startedAt = performance.now();
   let domainsInjected = 0;
@@ -97,7 +104,11 @@ export async function runActorSupervisionFailpointScenario(stack: ComposeStack, 
   await stack.waitForAllClientDomains(activeFaultStartedAt, config.clientReplicas);
   const faultStartedAt = new Date();
   await injectAndWaitForReadinessWithdrawal("all-domain", config);
-  const activeFaultErrors = await stack.waitForAllClientErrors(faultStartedAt, config.clientReplicas);
+  const activeFaultErrors = await stack.waitForAllClientErrors(
+    faultStartedAt,
+    config.clientReplicas,
+    activeFaultObservationTimeoutMs(config.requestTimeoutMs, config.startupTimeoutMs),
+  );
   await stack.stopBombardClientsAndCapture("actor-supervision-active-fault");
   await stack.stopFitz();
   await stack.restartFitz();

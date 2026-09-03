@@ -12,7 +12,6 @@ type ComposeRunner = (
 
 interface StorageFaultRecoveryOperations {
   stopFitz: () => Promise<void>;
-  restartStorage: () => Promise<void>;
   startFitz: () => Promise<void>;
 }
 
@@ -20,7 +19,6 @@ export async function executeStorageFaultRecovery(
   operations: StorageFaultRecoveryOperations,
 ): Promise<void> {
   await operations.stopFitz();
-  await operations.restartStorage();
   await operations.startFitz();
 }
 

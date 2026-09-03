@@ -112,6 +112,11 @@ jobs:
           - schedule-due-storm-isolation
           - same-shard-family-fairness
           - actor-supervision-failpoint
+          - family-actor-partial-failure-isolation
+          - same-shard-family-failure-isolation
+          - family-actor-exhaustion-readiness
+          - family-actor-degradation-observability
+          - family-actor-inflight-concurrent-failure
     steps:
       - name: Check out Fitz Destroyer
         uses: actions/checkout@v7
