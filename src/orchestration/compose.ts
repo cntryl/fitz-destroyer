@@ -84,6 +84,8 @@ export class ComposeStack {
   #jobSequence = 0;
   #roleSequence = 0;
   #metricsUrl: string | undefined;
+  #pressureRssBytes: number | undefined;
+  #pressureRssSampledAt = 0;
 
   constructor(
     config: RunConfig,
@@ -369,20 +371,12 @@ export class ComposeStack {
     if (containers.length !== 1 || container === undefined) {
       throw new Error(`Expected one running Fitz container for pressure snapshot, found ${containers.length}`);
     }
-    const [queue, rpc, prometheus, stats] = await Promise.all([
+    const [queue, rpc, prometheus, rssBytes] = await Promise.all([
       this.fetchJson("/api/v1/all/queue/stats"),
       this.fetchJson("/api/v1/all/rpc/stats"),
       this.fetchTextAt(`${metricsUrl}/metrics`, "Prometheus /metrics"),
-      runCommand(
-        "docker",
-        ["stats", "--no-stream", "--format", "{{json .}}", container],
-        { cwd: this.#config.rootDir },
-      ),
+      this.pressureRss(container),
     ]);
-    const record = JSON.parse(stats.stdout.trim()) as { MemUsage?: unknown };
-    if (typeof record.MemUsage !== "string") {
-      throw new Error(`Docker stats omitted Fitz MemUsage: ${stats.stdout.trim()}`);
-    }
     return {
       timestamp: new Date().toISOString(),
       queue,
@@ -421,8 +415,27 @@ export class ComposeStack {
           "fitz_router_high_lane_backpressure_total",
         ),
       },
-      rssBytes: parseDockerMemoryUsage(record.MemUsage),
+      rssBytes,
     };
+  }
+
+  private async pressureRss(container: string): Promise<number> {
+    const now = Date.now();
+    if (this.#pressureRssBytes !== undefined && now - this.#pressureRssSampledAt < 10_000) {
+      return this.#pressureRssBytes;
+    }
+    const stats = await runCommand(
+      "docker",
+      ["stats", "--no-stream", "--format", "{{json .}}", container],
+      { cwd: this.#config.rootDir },
+    );
+    const record = JSON.parse(stats.stdout.trim()) as { MemUsage?: unknown };
+    if (typeof record.MemUsage !== "string") {
+      throw new Error(`Docker stats omitted Fitz MemUsage: ${stats.stdout.trim()}`);
+    }
+    this.#pressureRssBytes = parseDockerMemoryUsage(record.MemUsage);
+    this.#pressureRssSampledAt = now;
+    return this.#pressureRssBytes;
   }
 
   async prometheusMetricValue(name: string): Promise<number> {

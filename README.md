@@ -321,14 +321,20 @@ fails the run; recovered session-cleanup retries are recorded in the artifacts.
 `domain-pressure` runs a short, continuously bombarding client fleet without
 injecting faults. Use `--domains` to isolate one domain or an interference pair.
 It requires every selected domain to make progress on every client in each
-ten-second window and fails on definite operation errors. Queue operations with
-an unknown durable outcome are accepted only when exact reconciliation proves
-that every deterministic sequence resolved at most once.
+ten-second window and fails on definite operation errors. A typed Queue 4005
+rejection is retried with bounded exponential backoff because the request was
+not accepted; each retry remains explicit in stage evidence. Queue operations
+with an unknown durable outcome are accepted only when exact reconciliation
+proves that every deterministic sequence resolved at most once.
 KV and Schedule repeatedly update one logical resource per client, while Stream
-appends to one resource per client. This keeps route and current-state cardinality
-bounded so RSS diagnostics are not dominated by intentionally abandoned KV keys
-or Schedule definitions; Stream history still grows according to its durable
-append-only contract.
+appends to one resource per client. Durable loops run at a steady maximum of one
+cycle per second per client; dedicated overload scenarios own saturation tests.
+This keeps route and current-state cardinality bounded so RSS diagnostics are not
+dominated by intentionally abandoned KV keys or Schedule definitions; Stream
+history still grows according to its durable append-only contract. Live-domain
+loops use a shorter cadence, including pacing Notice publication so its
+fire-and-forget loop cannot monopolize the shared family lane and starve the
+response-bearing domain probes.
 `pressure-evidence.json` contains per-client/domain/stage totals, latency
 percentiles, normalized error samples, Queue reconciliation, broker snapshots,
 and diagnostic warnings.
