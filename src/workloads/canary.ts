@@ -1,6 +1,7 @@
 import type { Client } from "@cntryl/fitz";
 import type { LiveCommonOptions, LiveLog } from "./live.js";
 import { ALL_DOMAINS, assertBytesEqual, type Domain } from "./model.js";
+import { retryQueueBackpressure } from "./queue-backpressure.js";
 
 export type CanaryOptions = LiveCommonOptions & {
   domains: readonly Domain[];
@@ -49,17 +50,19 @@ export async function runCanaryOperation(
   const route = routeOverride ?? canaryRoute(domain, options.namespace, sequence);
   const payload = canaryPayload(domain, sequence, options.payloadBytes);
   if (domain === "queue") {
-    await client.queue.enqueue(route, { body: payload, signal });
-    const items = await client.queue.reserve(route, {
-      leaseSeconds: 30,
-      batchSize: 1,
-      waitSeconds: 5,
-      signal,
-    });
+    await retryQueueBackpressure(() => client.queue.enqueue(route, { body: payload, signal }));
+    const items = await retryQueueBackpressure(() =>
+      client.queue.reserve(route, {
+        leaseSeconds: 30,
+        batchSize: 1,
+        waitSeconds: 5,
+        signal,
+      }),
+    );
     const item = items[0];
     if (item === undefined) throw new Error(`Queue canary ${sequence} did not reserve its message`);
     assertBytesEqual(item.body, payload, `Queue canary ${sequence}`);
-    await item.complete({ signal });
+    await retryQueueBackpressure(() => item.complete({ signal }));
   } else if (domain === "kv") {
     const transaction = await client.kv.begin(route, { durability: "Sync", signal });
     try {

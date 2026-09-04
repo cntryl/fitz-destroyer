@@ -52,9 +52,9 @@ import {
   pressureStreamWrite,
   pressureValue,
   replaceAndReconcilePressureStreamClient,
-  retryPressureQueueBackpressure,
   runPressureQueueReconciler,
 } from "./workloads/pressure.js";
+import { retryQueueBackpressure } from "./workloads/queue-backpressure.js";
 import {
   runQueueLifecycle,
   type QueueLifecycleAction,
@@ -759,7 +759,7 @@ async function bombard(client: Client): Promise<void> {
       const enqueueMetrics = stageMetrics(stages, "queue", "enqueue");
       try {
         await observeStage(stages, "queue", "enqueue", () =>
-          retryPressureQueueBackpressure(
+          retryQueueBackpressure(
             () => client.queue.enqueue(route, { body: payload("queue", i), signal }),
             (attempt, delayMs, error) => {
               enqueueMetrics.retryableBackpressure += 1;
@@ -781,7 +781,7 @@ async function bombard(client: Client): Promise<void> {
       }
       const reserveMetrics = stageMetrics(stages, "queue", "reserve");
       const items = await observeStage(stages, "queue", "reserve", () =>
-        retryPressureQueueBackpressure(
+        retryQueueBackpressure(
           () => client.queue.reserve(route, { leaseSeconds: 2, batchSize: 1, signal }),
           (attempt, delayMs, error) => {
             reserveMetrics.retryableBackpressure += 1;

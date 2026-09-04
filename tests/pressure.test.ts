@@ -18,15 +18,17 @@ import {
 } from "../src/orchestration/compose-evidence.js";
 import {
   isPressureStreamCleanupPending,
-  isPressureQueueBackpressure,
   nextPressureStreamOffset,
   pressureKvWrite,
   pressureLoopDelayMs,
   pressureScheduleRoute,
   pressureStreamWrite,
   replaceAndReconcilePressureStreamClient,
-  retryPressureQueueBackpressure,
 } from "../src/workloads/pressure.js";
+import {
+  isQueueBackpressure,
+  retryQueueBackpressure,
+} from "../src/workloads/queue-backpressure.js";
 import {
   analyzePressureLogs,
   assertProgressWindows,
@@ -61,7 +63,7 @@ test("should_apply_steady_pressure_cadence_by_domain_semantics", () => {
 test("should_retry_only_typed_queue_backpressure_with_bounded_exponential_delay", async () => {
   const delays: number[] = [];
   let attempts = 0;
-  const result = await retryPressureQueueBackpressure(
+  const result = await retryQueueBackpressure(
     async () => {
       attempts += 1;
       if (attempts < 6) throw { domainCode: 4_005 };
@@ -74,10 +76,10 @@ test("should_retry_only_typed_queue_backpressure_with_bounded_exponential_delay"
   assert.equal(result, "accepted");
   assert.equal(attempts, 6);
   assert.deepEqual(delays, [25, 50, 100, 200, 250]);
-  assert.equal(isPressureQueueBackpressure({ domainCode: 4_005 }), true);
-  assert.equal(isPressureQueueBackpressure({ domainCode: 5_007 }), false);
+  assert.equal(isQueueBackpressure({ domainCode: 4_005 }), true);
+  assert.equal(isQueueBackpressure({ domainCode: 5_007 }), false);
   await assert.rejects(
-    retryPressureQueueBackpressure(
+    retryQueueBackpressure(
       async () => {
         throw new Error("definite Queue failure");
       },
