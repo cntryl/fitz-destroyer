@@ -3,13 +3,10 @@ import type { LiveLog } from "./live.js";
 import type { Domain } from "./model.js";
 
 const STREAM_SESSION_ALREADY_ACTIVE = 2_002;
-const QUEUE_FULL = 4_005;
 const NOTICE_PRESSURE_DELAY_MS = 100;
 const LIVE_PRESSURE_DELAY_MS = 250;
 const DURABLE_PRESSURE_DELAY_MS = 1_000;
 const RECONCILIATION_BATCH_SIZE = 32;
-const QUEUE_BACKPRESSURE_INITIAL_DELAY_MS = 25;
-const QUEUE_BACKPRESSURE_MAX_DELAY_MS = 250;
 
 export function pressureValue(
   namespace: string,
@@ -82,35 +79,6 @@ export function pressureLoopDelayMs(domain: Domain): number {
   return DURABLE_PRESSURE_DELAY_MS;
 }
 
-export function isPressureQueueBackpressure(error: unknown): boolean {
-  return typeof error === "object" &&
-    error !== null &&
-    "domainCode" in error &&
-    error.domainCode === QUEUE_FULL;
-}
-
-export async function retryPressureQueueBackpressure<T>(
-  operation: () => Promise<T>,
-  onRetry: (attempt: number, delayMs: number, error: unknown) => void,
-  wait: (delayMs: number) => Promise<void> = pressureDelay,
-): Promise<T> {
-  let retries = 0;
-  while (true) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isPressureQueueBackpressure(error)) throw error;
-      retries += 1;
-      const delayMs = Math.min(
-        QUEUE_BACKPRESSURE_INITIAL_DELAY_MS * (2 ** (retries - 1)),
-        QUEUE_BACKPRESSURE_MAX_DELAY_MS,
-      );
-      onRetry(retries, delayMs, error);
-      await wait(delayMs);
-    }
-  }
-}
-
 export type PressureReconcileOptions = {
   namespace: string;
   workers: readonly string[];
@@ -175,8 +143,4 @@ export function decodePressureQueueSequence(
 
 function operationSignal(options: PressureReconcileOptions): AbortSignal {
   return AbortSignal.any([options.signal, AbortSignal.timeout(options.requestTimeoutMs)]);
-}
-
-function pressureDelay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

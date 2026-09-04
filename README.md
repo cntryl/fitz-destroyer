@@ -408,8 +408,11 @@ selected by `--domains`. Shared KV, Stream, Schedule, and Lease operations can
 conflict by design, so their errors are recorded rather than treated as the
 canary verdict. While those routes are hot, an independent client performs
 exact Queue, KV, Stream, Schedule, Notice, Lease, and RPC round trips on cold
-routes. The run fails if a hot domain makes no progress or any cold canary
-operation fails.
+routes. A cold Queue round trip retries only typed 4005 responses, whose contract
+states that the request was not accepted and should be retried with backoff; the
+existing operation deadline remains authoritative. The run fails if a hot domain
+makes no progress or any cold canary operation cannot complete within that
+deadline.
 
 `protocol-abuse` bypasses the Fitz client for an isolated raw WebSocket phase.
 Disposable containers send text-before-CONNECT, empty and truncated TLVs,
